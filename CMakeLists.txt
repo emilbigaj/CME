@@ -23,4 +23,6 @@ add_compile_options(
 add_subdirectory ("${CMAKE_CURRENT_SOURCE_DIR}/../HFT" "${CMAKE_BINARY_DIR}/HFT")
 
 # CME connectivity built on top of HFT. iLink3 (order entry) first, MDP3 (market data) next.
+# Schema holds the generated SBE structs (SchemaLib); protocol libs link it.
+add_subdirectory ("Schema")
 add_subdirectory ("ILink3")

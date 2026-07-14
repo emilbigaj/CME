@@ -1,5 +1,5 @@
 #include "Timestamp.hpp"
-#include "Generated/ILink3Sbe.hpp"
+#include "ILink3Sbe.hpp"
 #include <openssl/hmac.h>
 #include <iostream>
 

@@ -2,15 +2,15 @@ project(ILink3)
 
 # --- A. The Library (ILink3Lib) ---
 # STATIC with Empty.cpp (not INTERFACE) so CMake generates compile commands
-# for the headers — same IntelliSense trick as the HFT lib. Empty.cpp #includes the
-# generated SBE header, so the library build validates its static_asserts.
+# for the headers — same IntelliSense trick as the HFT lib.
 add_library(ILink3Lib STATIC
 	"Empty.cpp"
-	"Generated/ILink3Sbe.hpp"
+	"ILink3Config.hpp"
 )
 
-# iLink3 plugs into the Provider Server seam, so it sees the whole HFT stack.
-target_link_libraries(ILink3Lib PUBLIC ToolsLib SocketLib DataLib ExecutionLib ProviderLib)
+# SchemaLib carries the generated SBE structs; the rest is the HFT stack for the
+# Provider Server seam iLink3 plugs into.
+target_link_libraries(ILink3Lib PUBLIC SchemaLib ToolsLib SocketLib DataLib ExecutionLib ProviderLib)
 
 # Anyone linking ILink3Lib can include headers from this folder.
 target_include_directories(ILink3Lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

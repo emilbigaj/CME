@@ -1,18 +1,29 @@
-SBE schema artifacts for CME connectivity. Production structs are generated/verified
-ONLY from these official CME files. No stale or third-party schema files in this repo.
+CME SBE schemas + code generation. Production structs are generated/verified ONLY from
+these official CME files. No stale or third-party schema files in this repo.
 
-iLink 3 (order entry) — ilinkbinary.xml  [PRESENT]
-  Schema: package=iLinkBinary, id=8, version=9, description=20251104, littleEndian.
-  Version 9 is the only version CME Globex accepts (since 2026-04-26). 56 messages.
-  sha256: 5e71168d3e0828925eedd9f5f1502f62ae7788b70d77fd0d5858fd45244d9a64
-  Source: CME SFTP  sftpng.cmegroup.com  (login cmeconfig, public schema-distribution account)
-    /MSGW/Production/Templates/ilinkbinary.xml   (also /MSGW/Cert, /MSGW/NRCert)
-  Fetched 2026-07-14: Production == NRCert == Cert, byte-identical (same sha256).
-  Retired v8 lives beside it on SFTP as ilinkbinary_v8.xml; not needed here.
-  Refresh: Sunday prior to market open. Re-pull and re-diff before any week the schema changes.
-  If environments ever diverge (NR/Cert leading Production), split into per-env copies then.
+Regenerate everything (downloads latest schemas, then regenerates both headers):
+  ./regen.sh [Production|NRCert|Cert]     (default Production)
 
-MDP 3.0 (market data) — later, public anonymous FTP:
-  ftp://ftp.cmegroup.com/SBEFix/Production/Templates/templates_FixBinary.xml   (v13)
+Files:
+  ilinkbinary.xml           iLink 3 schema (package iLinkBinary, id 8, version 9).
+                            Source: CME SFTP sftpng.cmegroup.com (public cmeconfig login)
+                            /MSGW/<env>/Templates/ilinkbinary.xml.
+                            v9 is the only version CME Globex accepts (since 2026-04-26).
+  templates_FixBinary.xml   MDP 3.0 schema (package mktdata, id 1, version 13).
+                            Source: anonymous FTP ftp.cmegroup.com
+                            /SBEFix/<env>/Templates/templates_FixBinary.xml.
+  gen_sbe.py                Generator: SBE XML -> #pragma pack(1) cast-over-the-wire structs
+                            with glaze ToString(), HFT house style. Profiles: ilink3, mdp3.
+  ILink3Sbe.hpp             GENERATED, namespace ILink3 (56 messages). Do not edit.
+  Mdp3Sbe.hpp               GENERATED, namespace Mdp3 (31 messages). Do not edit.
+  CMakeLists.txt            SchemaLib (compiles both headers every build -> all
+                            static_assert(sizeof == BlockLength) layout checks run)
+                            + SchemaTests (NewOrderSingle print demo).
 
-v8 -> v9 was an appended template extension (same template IDs, appended fields, larger blockLengths).
+CME refreshes schema files on the Sunday prior to market open; regen.sh reports
+"SCHEMA CHANGED version X -> Y" when a pull differs, and generation is deterministic,
+so the git diff of the generated headers shows exactly what CME changed.
+
+PHASE 2 (pending): repeating <group> cursors + var-length <data>. iLink3's order hot path
+is flat root blocks (covered); MDP3 incremental refresh messages are group-heavy, so
+group support is required before the MDP3 feed handler can decode book entries.

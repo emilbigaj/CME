@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-CME iLink 3 SBE code generator.
+CME SBE code generator (iLink 3 order entry + MDP 3.0 market data).
 
-Parses the official ilinkbinary.xml (schema id 8) and emits a single C++23 header of
+Parses an official CME SBE schema XML and emits a single C++23 header of
 #pragma pack(1) POD structs you cast straight over the wire, each with glaze reflection
 and a ToString() -- the same house style as the HFT lib (Order.hpp / Instrument.hpp).
+
+Profiles hold the schema-specific bits (namespace, expected package/id, framing):
+    ilink3 : ilinkbinary.xml          -> namespace ILink3, SOFH framing (0xCAFE)
+    mdp3   : templates_FixBinary.xml  -> namespace Mdp3, UDP packet framing
 
 Design notes:
   * presence="constant" fields are NOT on the wire -> skipped from the struct layout,
@@ -16,21 +20,38 @@ Design notes:
   * PHASE 1: only the fixed root block. Repeating <group> and var-length <data> are NOT
     struct members (they start at BlockLength); they get cursor/decoder helpers in phase 2.
 
-Usage: gen_ilink3.py <ilinkbinary.xml> <out.hpp>
+Usage: gen_sbe.py <profile> <schema.xml> <out.hpp>
 """
 import sys
 import xml.etree.ElementTree as ET
 
-NS = '{http://www.fixprotocol.org/ns/simple/1.0}'
+PROFILES = {
+    'ilink3': dict(
+        namespace='ILink3',
+        title='CME iLink 3 SBE',
+        expect_package='iLinkBinary',
+        expect_id='8',
+        framing='sofh',
+    ),
+    'mdp3': dict(
+        namespace='Mdp3',
+        title='CME MDP 3.0 SBE',
+        expect_package='mktdata',
+        expect_id='1',
+        framing='packet',
+    ),
+}
 
 PRIM_CPP = {
     'char': 'char', 'int8': 'int8_t', 'uint8': 'uint8_t',
     'int16': 'int16_t', 'uint16': 'uint16_t', 'int32': 'int32_t',
     'uint32': 'uint32_t', 'int64': 'int64_t', 'uint64': 'uint64_t',
+    'float': 'float', 'double': 'double',
 }
 PRIM_SIZE = {
     'char': 1, 'int8': 1, 'uint8': 1, 'int16': 2, 'uint16': 2,
     'int32': 4, 'uint32': 4, 'int64': 8, 'uint64': 8,
+    'float': 4, 'double': 8,
 }
 CPP_KEYWORDS = {
     'new', 'delete', 'default', 'operator', 'this', 'class', 'struct',
@@ -60,7 +81,8 @@ def ident(name):
 
 
 class Schema:
-    def __init__(self, path):
+    def __init__(self, path, namespace):
+        self.ns = namespace
         self.root = ET.parse(path).getroot()
         self.types = {}       # name -> <type> element
         self.composites = {}  # name -> <composite>
@@ -78,6 +100,7 @@ class Schema:
                     self.enums[name] = child
                 elif t == 'set':
                     self.sets[name] = child
+        self.package = self.root.get('package')
         self.id = self.root.get('id')
         self.version = self.root.get('version')
         self.description = self.root.get('description')
@@ -99,11 +122,11 @@ class Schema:
         # Qualify user-defined types with the namespace: CME names several fields the same
         # as their enum type (SplitMsg SplitMsg;), which unqualified trips -Wchanges-meaning.
         if ftype in self.enums:
-            return f'ILink3::{ident(ftype)}'
+            return f'{self.ns}::{ident(ftype)}'
         if ftype in self.sets:
-            return f'ILink3::{ident(ftype)}'
+            return f'{self.ns}::{ident(ftype)}'
         if ftype in self.composites:
-            return f'ILink3::{ident(ftype)}'
+            return f'{self.ns}::{ident(ftype)}'
         t = self.types[ftype]
         prim = t.get('primitiveType')
         length = t.get('length')
@@ -125,11 +148,24 @@ class Schema:
             return int(length)
         return PRIM_SIZE[prim]
 
+    def composite_members(self, comp):
+        """Composite members as <type>-like elements; <ref> members resolve to their target."""
+        out = []
+        for m in comp:
+            t = tag(m)
+            if t == 'type':
+                out.append(m)
+            elif t == 'ref':
+                target = m.get('type')
+                if target in self.types:
+                    out.append(self.types[target])
+                else:
+                    raise SystemExit(f'composite {comp.get("name")}: unsupported <ref type="{target}">')
+        return out
+
     def composite_size(self, comp):
         total = 0
-        for m in comp:
-            if tag(m) != 'type':
-                continue
+        for m in self.composite_members(comp):
             if m.get('presence') == 'constant':   # constant sub-fields are not on the wire
                 continue
             prim = m.get('primitiveType')
@@ -185,9 +221,7 @@ def emit_composite(s, name, out):
     members = []          # (cppType, memberName)
     constants = []        # (cppType, memberName, value)
     scale_exp = None
-    for m in comp:
-        if tag(m) != 'type':
-            continue
+    for m in s.composite_members(comp):
         raw = m.get('name')
         mname = ident(raw[0].upper() + raw[1:])   # PascalCase composite members (Mantissa, Year...)
         prim = m.get('primitiveType')
@@ -235,6 +269,7 @@ def emit_message(s, msg, out):
     layout = []     # (offset, size, cppType, memberName)  wire fields, ascending offset
     constants = []  # (cppType, memberName, value)
     groups = []     # group/data names deferred to phase 2
+    computed = 0    # running offset for fields without an explicit offset attribute
     for f in msg:
         t = tag(f)
         if t == 'group':
@@ -250,8 +285,11 @@ def emit_message(s, msg, out):
             tdef = s.types[ftype]
             constants.append((s.field_cpp_type(ftype), ident(f.get('name')), (tdef.text or '').strip()))
             continue
-        off = int(f.get('offset'))
-        layout.append((off, s.field_wire_size(ftype), s.field_cpp_type(ftype), ident(f.get('name'))))
+        size = s.field_wire_size(ftype)
+        off_attr = f.get('offset')
+        off = int(off_attr) if off_attr is not None else computed
+        computed = off + size
+        layout.append((off, size, s.field_cpp_type(ftype), ident(f.get('name'))))
     layout.sort(key=lambda x: x[0])
 
     out.append('#pragma pack(push, 1)')
@@ -295,19 +333,51 @@ def emit_message(s, msg, out):
     out.append('};')
     out.append('#pragma pack(pop)')
     out.append(f'static_assert(Tools::PlainOldData<{name}>);')
-    out.append(f'static_assert(sizeof({name}) == {name}::BlockLength, "{name} root block size mismatch");')
+    if block_length == 0 and not members:
+        # Empty root block (e.g. MDP3 AdminHeartbeat): a C++ empty struct occupies 1 byte,
+        # so the wire assert cannot hold. Never cast or copy such a struct over bytes.
+        out.append(f'static_assert(sizeof({name}) == 1, "{name}: empty root block, do not cast over the wire");')
+    else:
+        out.append(f'static_assert(sizeof({name}) == {name}::BlockLength, "{name} root block size mismatch");')
     out.append('')
     return name, mid
 
 
+def emit_framing(cfg, out):
+    out.append('// SBE message header (precedes every message body).')
+    out.append('#pragma pack(push, 1)')
+    out.append('struct MessageHeader { uint16_t BlockLength; uint16_t TemplateId; uint16_t SchemaId; uint16_t Version; };')
+    out.append('static_assert(sizeof(MessageHeader) == 8);')
+    if cfg['framing'] == 'sofh':
+        out.append('// Simple Open Framing Header: EncodingType 0xCAFE = CME SBE 1.0 little-endian.')
+        out.append('struct SimpleOpenFramingHeader { uint16_t MessageLength; uint16_t EncodingType; };')
+        out.append('static constexpr uint16_t SbeEncodingType = 0xCAFE;')
+        out.append('static_assert(sizeof(SimpleOpenFramingHeader) == 4);')
+    elif cfg['framing'] == 'packet':
+        out.append('// MDP3 UDP packet: [PacketHeader][ MessageSize | MessageHeader | body ]*  repeated to end of datagram.')
+        out.append('struct PacketHeader { uint32_t MsgSeqNum; uint64_t SendingTime; };')
+        out.append('static_assert(sizeof(PacketHeader) == 12);')
+        out.append('// MessageSize counts itself + MessageHeader + body (i.e. offset to the next message).')
+        out.append('struct MessageSize { uint16_t Size; };')
+        out.append('static_assert(sizeof(MessageSize) == 2);')
+    out.append('#pragma pack(pop)')
+    out.append('')
+
+
 def main():
-    if len(sys.argv) != 3:
-        sys.exit('usage: gen_ilink3.py <ilinkbinary.xml> <out.hpp>')
-    s = Schema(sys.argv[1])
+    if len(sys.argv) != 4 or sys.argv[1] not in PROFILES:
+        sys.exit(f'usage: gen_sbe.py <{"|".join(PROFILES)}> <schema.xml> <out.hpp>')
+    cfg = PROFILES[sys.argv[1]]
+    s = Schema(sys.argv[2], cfg['namespace'])
+
+    if s.package != cfg['expect_package'] or s.id != cfg['expect_id']:
+        sys.exit(f'schema mismatch: got package="{s.package}" id={s.id}, '
+                 f'expected package="{cfg["expect_package"]}" id={cfg["expect_id"]}')
+
     out = []
     out.append('#pragma once')
-    out.append('// AUTO-GENERATED by codegen/gen_ilink3.py from ilinkbinary.xml -- DO NOT EDIT BY HAND.')
-    out.append(f'// CME iLink 3 SBE  schema id {s.id}, version {s.version}, description {s.description}.')
+    out.append('// AUTO-GENERATED by Schema/gen_sbe.py -- DO NOT EDIT BY HAND.')
+    out.append(f'// {cfg["title"]}  schema id {s.id}, version {s.version}, description {s.description}.')
     out.append('// Cast these #pragma pack(1) structs straight over the wire (little-endian).')
     out.append('')
     out.append('#include <cstdint>')
@@ -317,22 +387,13 @@ def main():
     out.append('#include "Json.hpp"     // Tools::Json + enum glaze meta (magic_enum)')
     out.append('#include "Tools.hpp"    // Tools::PlainOldData')
     out.append('')
-    out.append('namespace ILink3')
+    out.append(f'namespace {cfg["namespace"]}')
     out.append('{')
     out.append('')
     out.append(f'static constexpr uint16_t SchemaId = {s.id};')
     out.append(f'static constexpr uint16_t SchemaVersion = {s.version};')
     out.append('')
-    out.append('// SBE message header (precedes every message body).')
-    out.append('#pragma pack(push, 1)')
-    out.append('struct MessageHeader { uint16_t BlockLength; uint16_t TemplateId; uint16_t SchemaId; uint16_t Version; };')
-    out.append('static_assert(sizeof(MessageHeader) == 8);')
-    out.append('// Simple Open Framing Header: EncodingType 0xCAFE = CME SBE 1.0 little-endian.')
-    out.append('struct SimpleOpenFramingHeader { uint16_t MessageLength; uint16_t EncodingType; };')
-    out.append('static constexpr uint16_t SbeEncodingType = 0xCAFE;')
-    out.append('static_assert(sizeof(SimpleOpenFramingHeader) == 4);')
-    out.append('#pragma pack(pop)')
-    out.append('')
+    emit_framing(cfg, out)
 
     out.append('// ===== Enumerations =====')
     for name in s.enums:
@@ -342,7 +403,7 @@ def main():
         emit_set(s, name, out)
     out.append('// ===== Composites =====')
     for name in s.composites:
-        if name in ('messageHeader', 'groupSize', 'groupSizeEncoding', 'DATA'):
+        if name in ('messageHeader', 'groupSize', 'groupSizeEncoding', 'groupSize8Byte', 'DATA'):
             continue   # framing/dimension/var-data composites: explicit or phase 2
         emit_composite(s, name, out)
 
@@ -359,12 +420,12 @@ def main():
         out.append(f'\t{nm} = {mid},')
     out.append('};')
     out.append('')
-    out.append('} // namespace ILink3')
+    out.append(f'}} // namespace {cfg["namespace"]}')
     out.append('')
 
-    with open(sys.argv[2], 'w') as fh:
+    with open(sys.argv[3], 'w') as fh:
         fh.write('\n'.join(out))
-    print(f'generated {sys.argv[2]}: {len(s.enums)} enums, {len(s.sets)} sets, '
+    print(f'generated {sys.argv[3]}: {len(s.enums)} enums, {len(s.sets)} sets, '
           f'{len(s.composites)} composites, {len(templates)} messages')
 
 
