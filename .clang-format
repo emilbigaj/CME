@@ -1,0 +1,12 @@
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Always
+BreakBeforeBraces: Allman
+PointerAlignment: Left
+ColumnLimit: 0
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: None
+BinPackArguments: true
+BinPackParameters: true
