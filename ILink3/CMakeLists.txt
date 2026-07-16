@@ -10,6 +10,7 @@ add_library(ILink3Lib STATIC
 	"Wire.hpp"
 	"TcpConnection.hpp"
 	"CmeLogger.hpp"
+	"MarketSegmentGateway.hpp"
 )
 
 # SchemaLib carries the generated SBE structs; the rest is the HFT stack for the

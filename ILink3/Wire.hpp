@@ -135,6 +135,22 @@ inline size_t EncodeEstablish(const ILink3Config& config, uint64_t uuid, uint64_
 	return FrameMessage(dst, Establish::TemplateId, Establish::BlockLength, &establish, sizeof(establish), sizeof(uint16_t));
 }
 
+// Build a framed Sequence(506): the heartbeat that keeps the session alive, and the way we
+// tell CME our next outbound sequence number. Unlike the logon messages it is not signed and
+// has no trailing field. Returns bytes written.
+inline size_t EncodeSequence(uint64_t uuid, uint32_t nextSeqNo, std::span<uint8_t> dst)
+{
+	// Step 1: Fill the small body.
+	Sequence sequence{};
+	sequence.UUID = uuid;
+	sequence.NextSeqNo = nextSeqNo;
+	sequence.FaultToleranceIndicator = FTI::Primary;
+	sequence.KeepAliveIntervalLapsed = KeepAliveLapsed::NotLapsed;
+
+	// Step 2: Frame it (no trailing bytes).
+	return FrameMessage(dst, Sequence::TemplateId, Sequence::BlockLength, &sequence, sizeof(sequence), 0);
+}
+
 // A pointer to one complete message that has been located inside a receive buffer. It does
 // not own the bytes — it just marks where the message is and how to read it.
 struct FramedMessage

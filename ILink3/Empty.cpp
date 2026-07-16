@@ -7,3 +7,4 @@
 #include "Wire.hpp"
 #include "TcpConnection.hpp"
 #include "CmeLogger.hpp"
+#include "MarketSegmentGateway.hpp"
