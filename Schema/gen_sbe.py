@@ -300,6 +300,7 @@ def emit_message(s, msg, out):
     out.append('{')
     out.append(f'\tstatic constexpr uint16_t TemplateId = {mid};')
     out.append(f'\tstatic constexpr uint16_t BlockLength = {block_length};')
+    out.append(f'\tstatic constexpr std::string_view ObjectType = "{raw_name}";')
     if semantic:
         out.append(f'\tstatic constexpr std::string_view SemanticType = "{semantic}";')
 
@@ -340,7 +341,7 @@ def emit_message(s, msg, out):
     else:
         out.append(f'static_assert(sizeof({name}) == {name}::BlockLength, "{name} root block size mismatch");')
     out.append('')
-    return name, mid
+    return name, mid, raw_name
 
 
 def emit_framing(cfg, out):
@@ -410,15 +411,44 @@ def main():
     out.append('// ===== Messages (fixed root block; groups/data are phase 2) =====')
     templates = []
     for msg in descendants(s.root, 'message'):
-        nm, mid = emit_message(s, msg, out)
-        templates.append((nm, mid))
+        nm, mid, raw = emit_message(s, msg, out)
+        templates.append((nm, mid, raw))
 
     out.append('// Template id -> message, for RX dispatch.')
     out.append('enum class Template : uint16_t')
     out.append('{')
-    for nm, mid in sorted(templates, key=lambda x: int(x[1])):
+    for nm, mid, _ in sorted(templates, key=lambda x: int(x[1])):
         out.append(f'\t{nm} = {mid},')
     out.append('};')
+    out.append('')
+
+    # Template id -> "<Name><id>" object type string, for logging a received message by its
+    # header alone (no need to cast to the struct first). Unknown ids fall through to a stub.
+    out.append('// Template id -> object-type name (e.g. 514 -> "NewOrderSingle514"), for logging.')
+    out.append('inline std::string_view ToObjectType(uint16_t templateId)')
+    out.append('{')
+    out.append('\tswitch (templateId)')
+    out.append('\t{')
+    for _, mid, raw in sorted(templates, key=lambda x: int(x[1])):
+        out.append(f'\t\tcase {mid}: return "{raw}";')
+    out.append('\t\tdefault: return "Unknown";')
+    out.append('\t}')
+    out.append('}')
+    out.append('')
+
+    # Template id + body pointer -> the message serialized as one compact JSON line. Cold
+    # path only (used by the logger's drain thread). Messages carrying binary blobs may not
+    # render as valid text, so callers should guard the call.
+    out.append('// Template id + body -> the message as one compact JSON line, for logging.')
+    out.append('inline std::string ToJsonLine(uint16_t templateId, const void* body)')
+    out.append('{')
+    out.append('\tswitch (templateId)')
+    out.append('\t{')
+    for nm, mid, _ in sorted(templates, key=lambda x: int(x[1])):
+        out.append(f'\t\tcase {mid}: return Tools::Json::SerializeToLine(*reinterpret_cast<const {nm}*>(body));')
+    out.append('\t\tdefault: return "{}";')
+    out.append('\t}')
+    out.append('}')
     out.append('')
     out.append(f'}} // namespace {cfg["namespace"]}')
     out.append('')

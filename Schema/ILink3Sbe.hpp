@@ -502,6 +502,7 @@ struct Negotiate
 {
 	static constexpr uint16_t TemplateId = 500;
 	static constexpr uint16_t BlockLength = 76;
+	static constexpr std::string_view ObjectType = "Negotiate500";
 	static constexpr std::string_view SemanticType = "Negotiate";
 	Tools::StringN<32> HMACSignature;
 	Tools::StringN<20> AccessKeyID;
@@ -526,6 +527,7 @@ struct NegotiationResponse
 {
 	static constexpr uint16_t TemplateId = 501;
 	static constexpr uint16_t BlockLength = 33;
+	static constexpr std::string_view ObjectType = "NegotiationResponse501";
 	static constexpr std::string_view SemanticType = "NegotiationResponse";
 	uint64_t UUID;
 	uint64_t RequestTimestamp;
@@ -550,6 +552,7 @@ struct NegotiationReject
 {
 	static constexpr uint16_t TemplateId = 502;
 	static constexpr uint16_t BlockLength = 69;
+	static constexpr std::string_view ObjectType = "NegotiationReject502";
 	static constexpr std::string_view SemanticType = "NegotiationReject";
 	Tools::StringN<48> Reason;
 	uint64_t UUID;
@@ -573,6 +576,7 @@ struct Establish
 {
 	static constexpr uint16_t TemplateId = 503;
 	static constexpr uint16_t BlockLength = 132;
+	static constexpr std::string_view ObjectType = "Establish503";
 	static constexpr std::string_view SemanticType = "Establish";
 	Tools::StringN<32> HMACSignature;
 	Tools::StringN<20> AccessKeyID;
@@ -600,6 +604,7 @@ struct EstablishmentAck
 {
 	static constexpr uint16_t TemplateId = 504;
 	static constexpr uint16_t BlockLength = 39;
+	static constexpr std::string_view ObjectType = "EstablishmentAck504";
 	static constexpr std::string_view SemanticType = "EstablishmentAck";
 	uint64_t UUID;
 	uint64_t RequestTimestamp;
@@ -625,6 +630,7 @@ struct EstablishmentReject
 {
 	static constexpr uint16_t TemplateId = 505;
 	static constexpr uint16_t BlockLength = 73;
+	static constexpr std::string_view ObjectType = "EstablishmentReject505";
 	static constexpr std::string_view SemanticType = "EstablishmentReject";
 	Tools::StringN<48> Reason;
 	uint64_t UUID;
@@ -648,6 +654,7 @@ struct Sequence
 {
 	static constexpr uint16_t TemplateId = 506;
 	static constexpr uint16_t BlockLength = 14;
+	static constexpr std::string_view ObjectType = "Sequence506";
 	static constexpr std::string_view SemanticType = "Sequence";
 	uint64_t UUID;
 	uint32_t NextSeqNo;
@@ -667,6 +674,7 @@ struct Terminate
 {
 	static constexpr uint16_t TemplateId = 507;
 	static constexpr uint16_t BlockLength = 67;
+	static constexpr std::string_view ObjectType = "Terminate507";
 	static constexpr std::string_view SemanticType = "Terminate";
 	Tools::StringN<48> Reason;
 	uint64_t UUID;
@@ -687,6 +695,7 @@ struct RetransmitRequest
 {
 	static constexpr uint16_t TemplateId = 508;
 	static constexpr uint16_t BlockLength = 30;
+	static constexpr std::string_view ObjectType = "RetransmitRequest508";
 	static constexpr std::string_view SemanticType = "RetransmitRequest";
 	uint64_t UUID;
 	uint64_t LastUUID;
@@ -707,6 +716,7 @@ struct Retransmission
 {
 	static constexpr uint16_t TemplateId = 509;
 	static constexpr uint16_t BlockLength = 31;
+	static constexpr std::string_view ObjectType = "Retransmission509";
 	static constexpr std::string_view SemanticType = "Retransmission";
 	uint64_t UUID;
 	uint64_t LastUUID;
@@ -728,6 +738,7 @@ struct RetransmitReject
 {
 	static constexpr uint16_t TemplateId = 510;
 	static constexpr uint16_t BlockLength = 75;
+	static constexpr std::string_view ObjectType = "RetransmitReject510";
 	static constexpr std::string_view SemanticType = "RetransmitReject";
 	Tools::StringN<48> Reason;
 	uint64_t UUID;
@@ -749,6 +760,7 @@ struct NotApplied
 {
 	static constexpr uint16_t TemplateId = 513;
 	static constexpr uint16_t BlockLength = 17;
+	static constexpr std::string_view ObjectType = "NotApplied513";
 	static constexpr std::string_view SemanticType = "NotApplied";
 	uint64_t UUID;
 	uint32_t FromSeqNo;
@@ -768,6 +780,7 @@ struct NewOrderSingle
 {
 	static constexpr uint16_t TemplateId = 514;
 	static constexpr uint16_t BlockLength = 132;
+	static constexpr std::string_view ObjectType = "NewOrderSingle514";
 	static constexpr std::string_view SemanticType = "D";
 	ILink3::PRICENULL9 Price;
 	uint32_t OrderQty;
@@ -808,6 +821,7 @@ struct OrderCancelReplaceRequest
 {
 	static constexpr uint16_t TemplateId = 515;
 	static constexpr uint16_t BlockLength = 133;
+	static constexpr std::string_view ObjectType = "OrderCancelReplaceRequest515";
 	static constexpr std::string_view SemanticType = "G";
 	ILink3::PRICENULL9 Price;
 	uint32_t OrderQty;
@@ -849,6 +863,7 @@ struct OrderCancelRequest
 {
 	static constexpr uint16_t TemplateId = 516;
 	static constexpr uint16_t BlockLength = 96;
+	static constexpr std::string_view ObjectType = "OrderCancelRequest516";
 	static constexpr std::string_view SemanticType = "F";
 	uint64_t OrderID;
 	uint64_t PartyDetailsListReqID;
@@ -878,6 +893,7 @@ struct MassQuote
 {
 	static constexpr uint16_t TemplateId = 517;
 	static constexpr uint16_t BlockLength = 123;
+	static constexpr std::string_view ObjectType = "MassQuote517";
 	static constexpr std::string_view SemanticType = "i";
 	uint64_t PartyDetailsListReqID;
 	uint64_t SendingTimeEpoch;
@@ -909,6 +925,7 @@ struct PartyDetailsDefinitionRequest
 {
 	static constexpr uint16_t TemplateId = 518;
 	static constexpr uint16_t BlockLength = 147;
+	static constexpr std::string_view ObjectType = "PartyDetailsDefinitionRequest518";
 	static constexpr std::string_view SemanticType = "CX";
 	uint64_t PartyDetailsListReqID;
 	uint64_t SendingTimeEpoch;
@@ -942,6 +959,7 @@ struct PartyDetailsDefinitionRequestAck
 {
 	static constexpr uint16_t TemplateId = 519;
 	static constexpr uint16_t BlockLength = 159;
+	static constexpr std::string_view ObjectType = "PartyDetailsDefinitionRequestAck519";
 	static constexpr std::string_view SemanticType = "CY";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -979,6 +997,7 @@ struct BusinessReject
 {
 	static constexpr uint16_t TemplateId = 521;
 	static constexpr uint16_t BlockLength = 330;
+	static constexpr std::string_view ObjectType = "BusinessReject521";
 	static constexpr std::string_view SemanticType = "j";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1009,6 +1028,7 @@ struct ExecutionReportNew
 {
 	static constexpr uint16_t TemplateId = 522;
 	static constexpr uint16_t BlockLength = 226;
+	static constexpr std::string_view ObjectType = "ExecutionReportNew522";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1063,6 +1083,7 @@ struct ExecutionReportReject
 {
 	static constexpr uint16_t TemplateId = 523;
 	static constexpr uint16_t BlockLength = 483;
+	static constexpr std::string_view ObjectType = "ExecutionReportReject523";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1118,6 +1139,7 @@ struct ExecutionReportElimination
 {
 	static constexpr uint16_t TemplateId = 524;
 	static constexpr uint16_t BlockLength = 219;
+	static constexpr std::string_view ObjectType = "ExecutionReportElimination524";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1171,6 +1193,7 @@ struct ExecutionReportTradeOutright
 {
 	static constexpr uint16_t TemplateId = 525;
 	static constexpr uint16_t BlockLength = 293;
+	static constexpr std::string_view ObjectType = "ExecutionReportTradeOutright525";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1240,6 +1263,7 @@ struct ExecutionReportTradeSpread
 {
 	static constexpr uint16_t TemplateId = 526;
 	static constexpr uint16_t BlockLength = 230;
+	static constexpr std::string_view ObjectType = "ExecutionReportTradeSpread526";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1296,6 +1320,7 @@ struct ExecutionReportTradeSpreadLeg
 {
 	static constexpr uint16_t TemplateId = 527;
 	static constexpr uint16_t BlockLength = 219;
+	static constexpr std::string_view ObjectType = "ExecutionReportTradeSpreadLeg527";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1342,6 +1367,7 @@ struct QuoteCancel
 {
 	static constexpr uint16_t TemplateId = 528;
 	static constexpr uint16_t BlockLength = 61;
+	static constexpr std::string_view ObjectType = "QuoteCancel528";
 	static constexpr std::string_view SemanticType = "Z";
 	uint64_t PartyDetailsListReqID;
 	uint64_t SendingTimeEpoch;
@@ -1368,6 +1394,7 @@ struct OrderMassActionRequest
 {
 	static constexpr uint16_t TemplateId = 529;
 	static constexpr uint16_t BlockLength = 79;
+	static constexpr std::string_view ObjectType = "OrderMassActionRequest529";
 	static constexpr std::string_view SemanticType = "CA";
 	uint64_t PartyDetailsListReqID;
 	uint64_t OrderRequestID;
@@ -1401,6 +1428,7 @@ struct OrderMassStatusRequest
 {
 	static constexpr uint16_t TemplateId = 530;
 	static constexpr uint16_t BlockLength = 68;
+	static constexpr std::string_view ObjectType = "OrderMassStatusRequest530";
 	static constexpr std::string_view SemanticType = "AF";
 	uint64_t PartyDetailsListReqID;
 	uint64_t MassStatusReqID;
@@ -1429,6 +1457,7 @@ struct ExecutionReportModify
 {
 	static constexpr uint16_t TemplateId = 531;
 	static constexpr uint16_t BlockLength = 226;
+	static constexpr std::string_view ObjectType = "ExecutionReportModify531";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1484,6 +1513,7 @@ struct ExecutionReportStatus
 {
 	static constexpr uint16_t TemplateId = 532;
 	static constexpr uint16_t BlockLength = 513;
+	static constexpr std::string_view ObjectType = "ExecutionReportStatus532";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1543,6 +1573,7 @@ struct OrderStatusRequest
 {
 	static constexpr uint16_t TemplateId = 533;
 	static constexpr uint16_t BlockLength = 62;
+	static constexpr std::string_view ObjectType = "OrderStatusRequest533";
 	static constexpr std::string_view SemanticType = "H";
 	uint64_t PartyDetailsListReqID;
 	uint64_t OrdStatusReqID;
@@ -1566,6 +1597,7 @@ struct ExecutionReportCancel
 {
 	static constexpr uint16_t TemplateId = 534;
 	static constexpr uint16_t BlockLength = 247;
+	static constexpr std::string_view ObjectType = "ExecutionReportCancel534";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1624,6 +1656,7 @@ struct OrderCancelReject
 {
 	static constexpr uint16_t TemplateId = 535;
 	static constexpr uint16_t BlockLength = 409;
+	static constexpr std::string_view ObjectType = "OrderCancelReject535";
 	static constexpr std::string_view SemanticType = "9";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1660,6 +1693,7 @@ struct OrderCancelReplaceReject
 {
 	static constexpr uint16_t TemplateId = 536;
 	static constexpr uint16_t BlockLength = 409;
+	static constexpr std::string_view ObjectType = "OrderCancelReplaceReject536";
 	static constexpr std::string_view SemanticType = "9";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1697,6 +1731,7 @@ struct PartyDetailsListRequest
 {
 	static constexpr uint16_t TemplateId = 537;
 	static constexpr uint16_t BlockLength = 20;
+	static constexpr std::string_view ObjectType = "PartyDetailsListRequest537";
 	static constexpr std::string_view SemanticType = "CF";
 	uint64_t PartyDetailsListReqID;
 	uint64_t SendingTimeEpoch;
@@ -1716,6 +1751,7 @@ struct PartyDetailsListReport
 {
 	static constexpr uint16_t TemplateId = 538;
 	static constexpr uint16_t BlockLength = 93;
+	static constexpr std::string_view ObjectType = "PartyDetailsListReport538";
 	static constexpr std::string_view SemanticType = "CG";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1752,6 +1788,7 @@ struct ExecutionAck
 {
 	static constexpr uint16_t TemplateId = 539;
 	static constexpr uint16_t BlockLength = 101;
+	static constexpr std::string_view ObjectType = "ExecutionAck539";
 	static constexpr std::string_view SemanticType = "BN";
 	uint64_t PartyDetailsListReqID;
 	uint64_t OrderID;
@@ -1783,6 +1820,7 @@ struct RequestForQuote
 {
 	static constexpr uint16_t TemplateId = 543;
 	static constexpr uint16_t BlockLength = 55;
+	static constexpr std::string_view ObjectType = "RequestForQuote543";
 	static constexpr std::string_view SemanticType = "R";
 	uint64_t PartyDetailsListReqID;
 	uint64_t QuoteReqID;
@@ -1807,6 +1845,7 @@ struct NewOrderCross
 {
 	static constexpr uint16_t TemplateId = 544;
 	static constexpr uint16_t BlockLength = 74;
+	static constexpr std::string_view ObjectType = "NewOrderCross544";
 	static constexpr std::string_view SemanticType = "s";
 	uint64_t CrossID;
 	uint64_t OrderRequestID;
@@ -1836,6 +1875,7 @@ struct MassQuoteAck
 {
 	static constexpr uint16_t TemplateId = 545;
 	static constexpr uint16_t BlockLength = 352;
+	static constexpr std::string_view ObjectType = "MassQuoteAck545";
 	static constexpr std::string_view SemanticType = "b";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1875,6 +1915,7 @@ struct RequestForQuoteAck
 {
 	static constexpr uint16_t TemplateId = 546;
 	static constexpr uint16_t BlockLength = 358;
+	static constexpr std::string_view ObjectType = "RequestForQuoteAck546";
 	static constexpr std::string_view SemanticType = "b";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1908,6 +1949,7 @@ struct ExecutionReportTradeAddendumOutright
 {
 	static constexpr uint16_t TemplateId = 548;
 	static constexpr uint16_t BlockLength = 266;
+	static constexpr std::string_view ObjectType = "ExecutionReportTradeAddendumOutright548";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -1962,6 +2004,7 @@ struct ExecutionReportTradeAddendumSpread
 {
 	static constexpr uint16_t TemplateId = 549;
 	static constexpr uint16_t BlockLength = 227;
+	static constexpr std::string_view ObjectType = "ExecutionReportTradeAddendumSpread549";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -2010,6 +2053,7 @@ struct ExecutionReportTradeAddendumSpreadLeg
 {
 	static constexpr uint16_t TemplateId = 550;
 	static constexpr uint16_t BlockLength = 236;
+	static constexpr std::string_view ObjectType = "ExecutionReportTradeAddendumSpreadLeg550";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -2053,6 +2097,7 @@ struct SecurityDefinitionRequest
 {
 	static constexpr uint16_t TemplateId = 560;
 	static constexpr uint16_t BlockLength = 72;
+	static constexpr std::string_view ObjectType = "SecurityDefinitionRequest560";
 	static constexpr std::string_view SemanticType = "c";
 	uint64_t PartyDetailsListReqID;
 	uint64_t SecurityReqID;
@@ -2083,6 +2128,7 @@ struct SecurityDefinitionResponse
 {
 	static constexpr uint16_t TemplateId = 561;
 	static constexpr uint16_t BlockLength = 430;
+	static constexpr std::string_view ObjectType = "SecurityDefinitionResponse561";
 	static constexpr std::string_view SemanticType = "d";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -2130,6 +2176,7 @@ struct OrderMassActionReport
 {
 	static constexpr uint16_t TemplateId = 562;
 	static constexpr uint16_t BlockLength = 130;
+	static constexpr std::string_view ObjectType = "OrderMassActionReport562";
 	static constexpr std::string_view SemanticType = "BZ";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -2176,6 +2223,7 @@ struct QuoteCancelAck
 {
 	static constexpr uint16_t TemplateId = 563;
 	static constexpr uint16_t BlockLength = 370;
+	static constexpr std::string_view ObjectType = "QuoteCancelAck563";
 	static constexpr std::string_view SemanticType = "b";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -2218,6 +2266,7 @@ struct ExecutionReportPendingCancel
 {
 	static constexpr uint16_t TemplateId = 564;
 	static constexpr uint16_t BlockLength = 219;
+	static constexpr std::string_view ObjectType = "ExecutionReportPendingCancel564";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -2267,6 +2316,7 @@ struct ExecutionReportPendingReplace
 {
 	static constexpr uint16_t TemplateId = 565;
 	static constexpr uint16_t BlockLength = 196;
+	static constexpr std::string_view ObjectType = "ExecutionReportPendingReplace565";
 	static constexpr std::string_view SemanticType = "8";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -2315,6 +2365,7 @@ struct RequestForCross
 {
 	static constexpr uint16_t TemplateId = 566;
 	static constexpr uint16_t BlockLength = 67;
+	static constexpr std::string_view ObjectType = "RequestForCross566";
 	static constexpr std::string_view SemanticType = "s";
 	uint64_t CrossID;
 	uint64_t OrderRequestID;
@@ -2343,6 +2394,7 @@ struct MassQuoteRequest
 {
 	static constexpr uint16_t TemplateId = 567;
 	static constexpr uint16_t BlockLength = 124;
+	static constexpr std::string_view ObjectType = "MassQuoteRequest567";
 	static constexpr std::string_view SemanticType = "i";
 	uint64_t PartyDetailsListReqID;
 	uint64_t SendingTimeEpoch;
@@ -2374,6 +2426,7 @@ struct QuoteCancelBySet
 {
 	static constexpr uint16_t TemplateId = 568;
 	static constexpr uint16_t BlockLength = 52;
+	static constexpr std::string_view ObjectType = "QuoteCancelBySet568";
 	static constexpr std::string_view SemanticType = "Z";
 	uint64_t PartyDetailsListReqID;
 	uint64_t SendingTimeEpoch;
@@ -2400,6 +2453,7 @@ struct QuoteCancelByGroup
 {
 	static constexpr uint16_t TemplateId = 569;
 	static constexpr uint16_t BlockLength = 52;
+	static constexpr std::string_view ObjectType = "QuoteCancelByGroup569";
 	static constexpr std::string_view SemanticType = "Z";
 	uint64_t PartyDetailsListReqID;
 	uint64_t SendingTimeEpoch;
@@ -2426,6 +2480,7 @@ struct QuoteCancelByInstrument
 {
 	static constexpr uint16_t TemplateId = 570;
 	static constexpr uint16_t BlockLength = 51;
+	static constexpr std::string_view ObjectType = "QuoteCancelByInstrument570";
 	static constexpr std::string_view SemanticType = "Z";
 	uint64_t PartyDetailsListReqID;
 	uint64_t SendingTimeEpoch;
@@ -2451,6 +2506,7 @@ struct MassQuoteResponse
 {
 	static constexpr uint16_t TemplateId = 571;
 	static constexpr uint16_t BlockLength = 350;
+	static constexpr std::string_view ObjectType = "MassQuoteResponse571";
 	static constexpr std::string_view SemanticType = "b";
 	uint32_t SeqNum;
 	uint64_t UUID;
@@ -2543,5 +2599,135 @@ enum class Template : uint16_t
 	QuoteCancelByInstrument = 570,
 	MassQuoteResponse = 571,
 };
+
+// Template id -> object-type name (e.g. 514 -> "NewOrderSingle514"), for logging.
+inline std::string_view ToObjectType(uint16_t templateId)
+{
+	switch (templateId)
+	{
+		case 500: return "Negotiate500";
+		case 501: return "NegotiationResponse501";
+		case 502: return "NegotiationReject502";
+		case 503: return "Establish503";
+		case 504: return "EstablishmentAck504";
+		case 505: return "EstablishmentReject505";
+		case 506: return "Sequence506";
+		case 507: return "Terminate507";
+		case 508: return "RetransmitRequest508";
+		case 509: return "Retransmission509";
+		case 510: return "RetransmitReject510";
+		case 513: return "NotApplied513";
+		case 514: return "NewOrderSingle514";
+		case 515: return "OrderCancelReplaceRequest515";
+		case 516: return "OrderCancelRequest516";
+		case 517: return "MassQuote517";
+		case 518: return "PartyDetailsDefinitionRequest518";
+		case 519: return "PartyDetailsDefinitionRequestAck519";
+		case 521: return "BusinessReject521";
+		case 522: return "ExecutionReportNew522";
+		case 523: return "ExecutionReportReject523";
+		case 524: return "ExecutionReportElimination524";
+		case 525: return "ExecutionReportTradeOutright525";
+		case 526: return "ExecutionReportTradeSpread526";
+		case 527: return "ExecutionReportTradeSpreadLeg527";
+		case 528: return "QuoteCancel528";
+		case 529: return "OrderMassActionRequest529";
+		case 530: return "OrderMassStatusRequest530";
+		case 531: return "ExecutionReportModify531";
+		case 532: return "ExecutionReportStatus532";
+		case 533: return "OrderStatusRequest533";
+		case 534: return "ExecutionReportCancel534";
+		case 535: return "OrderCancelReject535";
+		case 536: return "OrderCancelReplaceReject536";
+		case 537: return "PartyDetailsListRequest537";
+		case 538: return "PartyDetailsListReport538";
+		case 539: return "ExecutionAck539";
+		case 543: return "RequestForQuote543";
+		case 544: return "NewOrderCross544";
+		case 545: return "MassQuoteAck545";
+		case 546: return "RequestForQuoteAck546";
+		case 548: return "ExecutionReportTradeAddendumOutright548";
+		case 549: return "ExecutionReportTradeAddendumSpread549";
+		case 550: return "ExecutionReportTradeAddendumSpreadLeg550";
+		case 560: return "SecurityDefinitionRequest560";
+		case 561: return "SecurityDefinitionResponse561";
+		case 562: return "OrderMassActionReport562";
+		case 563: return "QuoteCancelAck563";
+		case 564: return "ExecutionReportPendingCancel564";
+		case 565: return "ExecutionReportPendingReplace565";
+		case 566: return "RequestForCross566";
+		case 567: return "MassQuoteRequest567";
+		case 568: return "QuoteCancelBySet568";
+		case 569: return "QuoteCancelByGroup569";
+		case 570: return "QuoteCancelByInstrument570";
+		case 571: return "MassQuoteResponse571";
+		default: return "Unknown";
+	}
+}
+
+// Template id + body -> the message as one compact JSON line, for logging.
+inline std::string ToJsonLine(uint16_t templateId, const void* body)
+{
+	switch (templateId)
+	{
+		case 500: return Tools::Json::SerializeToLine(*reinterpret_cast<const Negotiate*>(body));
+		case 501: return Tools::Json::SerializeToLine(*reinterpret_cast<const NegotiationResponse*>(body));
+		case 502: return Tools::Json::SerializeToLine(*reinterpret_cast<const NegotiationReject*>(body));
+		case 503: return Tools::Json::SerializeToLine(*reinterpret_cast<const Establish*>(body));
+		case 504: return Tools::Json::SerializeToLine(*reinterpret_cast<const EstablishmentAck*>(body));
+		case 505: return Tools::Json::SerializeToLine(*reinterpret_cast<const EstablishmentReject*>(body));
+		case 506: return Tools::Json::SerializeToLine(*reinterpret_cast<const Sequence*>(body));
+		case 507: return Tools::Json::SerializeToLine(*reinterpret_cast<const Terminate*>(body));
+		case 508: return Tools::Json::SerializeToLine(*reinterpret_cast<const RetransmitRequest*>(body));
+		case 509: return Tools::Json::SerializeToLine(*reinterpret_cast<const Retransmission*>(body));
+		case 510: return Tools::Json::SerializeToLine(*reinterpret_cast<const RetransmitReject*>(body));
+		case 513: return Tools::Json::SerializeToLine(*reinterpret_cast<const NotApplied*>(body));
+		case 514: return Tools::Json::SerializeToLine(*reinterpret_cast<const NewOrderSingle*>(body));
+		case 515: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderCancelReplaceRequest*>(body));
+		case 516: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderCancelRequest*>(body));
+		case 517: return Tools::Json::SerializeToLine(*reinterpret_cast<const MassQuote*>(body));
+		case 518: return Tools::Json::SerializeToLine(*reinterpret_cast<const PartyDetailsDefinitionRequest*>(body));
+		case 519: return Tools::Json::SerializeToLine(*reinterpret_cast<const PartyDetailsDefinitionRequestAck*>(body));
+		case 521: return Tools::Json::SerializeToLine(*reinterpret_cast<const BusinessReject*>(body));
+		case 522: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportNew*>(body));
+		case 523: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportReject*>(body));
+		case 524: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportElimination*>(body));
+		case 525: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeOutright*>(body));
+		case 526: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeSpread*>(body));
+		case 527: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeSpreadLeg*>(body));
+		case 528: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancel*>(body));
+		case 529: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderMassActionRequest*>(body));
+		case 530: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderMassStatusRequest*>(body));
+		case 531: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportModify*>(body));
+		case 532: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportStatus*>(body));
+		case 533: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderStatusRequest*>(body));
+		case 534: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportCancel*>(body));
+		case 535: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderCancelReject*>(body));
+		case 536: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderCancelReplaceReject*>(body));
+		case 537: return Tools::Json::SerializeToLine(*reinterpret_cast<const PartyDetailsListRequest*>(body));
+		case 538: return Tools::Json::SerializeToLine(*reinterpret_cast<const PartyDetailsListReport*>(body));
+		case 539: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionAck*>(body));
+		case 543: return Tools::Json::SerializeToLine(*reinterpret_cast<const RequestForQuote*>(body));
+		case 544: return Tools::Json::SerializeToLine(*reinterpret_cast<const NewOrderCross*>(body));
+		case 545: return Tools::Json::SerializeToLine(*reinterpret_cast<const MassQuoteAck*>(body));
+		case 546: return Tools::Json::SerializeToLine(*reinterpret_cast<const RequestForQuoteAck*>(body));
+		case 548: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeAddendumOutright*>(body));
+		case 549: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeAddendumSpread*>(body));
+		case 550: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeAddendumSpreadLeg*>(body));
+		case 560: return Tools::Json::SerializeToLine(*reinterpret_cast<const SecurityDefinitionRequest*>(body));
+		case 561: return Tools::Json::SerializeToLine(*reinterpret_cast<const SecurityDefinitionResponse*>(body));
+		case 562: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderMassActionReport*>(body));
+		case 563: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancelAck*>(body));
+		case 564: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportPendingCancel*>(body));
+		case 565: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportPendingReplace*>(body));
+		case 566: return Tools::Json::SerializeToLine(*reinterpret_cast<const RequestForCross*>(body));
+		case 567: return Tools::Json::SerializeToLine(*reinterpret_cast<const MassQuoteRequest*>(body));
+		case 568: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancelBySet*>(body));
+		case 569: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancelByGroup*>(body));
+		case 570: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancelByInstrument*>(body));
+		case 571: return Tools::Json::SerializeToLine(*reinterpret_cast<const MassQuoteResponse*>(body));
+		default: return "{}";
+	}
+}
 
 } // namespace ILink3

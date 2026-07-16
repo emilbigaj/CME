@@ -6,6 +6,10 @@ project(ILink3)
 add_library(ILink3Lib STATIC
 	"Empty.cpp"
 	"ILink3Config.hpp"
+	"Hmac.hpp"
+	"Wire.hpp"
+	"TcpConnection.hpp"
+	"CmeLogger.hpp"
 )
 
 # SchemaLib carries the generated SBE structs; the rest is the HFT stack for the
@@ -19,6 +23,9 @@ target_include_directories(ILink3Lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(OpenSSL REQUIRED)
 target_link_libraries(ILink3Lib PUBLIC OpenSSL::Crypto)
 
-# --- B. The Test App (ILink3Tests) ---
+# --- B. The smoke-test app ---
 add_executable(ILink3Tests "Main.cpp")
 target_link_libraries(ILink3Tests PRIVATE ILink3Lib)
+
+# --- C. Standalone test programs (each its own executable) ---
+add_subdirectory("Tests")

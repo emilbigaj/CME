@@ -394,6 +394,7 @@ struct ChannelReset
 {
 	static constexpr uint16_t TemplateId = 4;
 	static constexpr uint16_t BlockLength = 9;
+	static constexpr std::string_view ObjectType = "ChannelReset4";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -411,6 +412,7 @@ struct AdminHeartbeat
 {
 	static constexpr uint16_t TemplateId = 12;
 	static constexpr uint16_t BlockLength = 0;
+	static constexpr std::string_view ObjectType = "AdminHeartbeat12";
 	static constexpr std::string_view SemanticType = "0";
 	std::string ToString() const { return Tools::Json::Serialize(*this); }
 	struct glaze { using T = AdminHeartbeat;
@@ -426,6 +428,7 @@ struct AdminLogin
 {
 	static constexpr uint16_t TemplateId = 15;
 	static constexpr uint16_t BlockLength = 1;
+	static constexpr std::string_view ObjectType = "AdminLogin15";
 	static constexpr std::string_view SemanticType = "A";
 	int8_t HeartBtInt;
 	std::string ToString() const { return Tools::Json::Serialize(*this); }
@@ -442,6 +445,7 @@ struct AdminLogout
 {
 	static constexpr uint16_t TemplateId = 16;
 	static constexpr uint16_t BlockLength = 180;
+	static constexpr std::string_view ObjectType = "AdminLogout16";
 	static constexpr std::string_view SemanticType = "5";
 	Tools::StringN<180> Text;
 	std::string ToString() const { return Tools::Json::Serialize(*this); }
@@ -458,6 +462,7 @@ struct SecurityStatus
 {
 	static constexpr uint16_t TemplateId = 30;
 	static constexpr uint16_t BlockLength = 30;
+	static constexpr std::string_view ObjectType = "SecurityStatus30";
 	static constexpr std::string_view SemanticType = "f";
 	uint64_t TransactTime;
 	Tools::StringN<6> SecurityGroup;
@@ -483,6 +488,7 @@ struct MDIncrementalRefreshVolume
 {
 	static constexpr uint16_t TemplateId = 37;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshVolume37";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -502,6 +508,7 @@ struct QuoteRequest
 {
 	static constexpr uint16_t TemplateId = 39;
 	static constexpr uint16_t BlockLength = 35;
+	static constexpr std::string_view ObjectType = "QuoteRequest39";
 	static constexpr std::string_view SemanticType = "R";
 	uint64_t TransactTime;
 	Tools::StringN<23> QuoteReqID;
@@ -522,6 +529,7 @@ struct MDIncrementalRefreshBook
 {
 	static constexpr uint16_t TemplateId = 46;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshBook46";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -541,6 +549,7 @@ struct MDIncrementalRefreshOrderBook
 {
 	static constexpr uint16_t TemplateId = 47;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshOrderBook47";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -560,6 +569,7 @@ struct MDIncrementalRefreshTradeSummary
 {
 	static constexpr uint16_t TemplateId = 48;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshTradeSummary48";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -579,6 +589,7 @@ struct MDIncrementalRefreshDailyStatistics
 {
 	static constexpr uint16_t TemplateId = 49;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshDailyStatistics49";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -598,6 +609,7 @@ struct MDIncrementalRefreshLimitsBanding
 {
 	static constexpr uint16_t TemplateId = 50;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshLimitsBanding50";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -617,6 +629,7 @@ struct MDIncrementalRefreshSessionStatistics
 {
 	static constexpr uint16_t TemplateId = 51;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshSessionStatistics51";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -636,6 +649,7 @@ struct SnapshotFullRefresh
 {
 	static constexpr uint16_t TemplateId = 52;
 	static constexpr uint16_t BlockLength = 59;
+	static constexpr std::string_view ObjectType = "SnapshotFullRefresh52";
 	static constexpr std::string_view SemanticType = "W";
 	uint32_t LastMsgSeqNumProcessed;
 	uint32_t TotNumReports;
@@ -663,6 +677,7 @@ struct SnapshotFullRefreshOrderBook
 {
 	static constexpr uint16_t TemplateId = 53;
 	static constexpr uint16_t BlockLength = 28;
+	static constexpr std::string_view ObjectType = "SnapshotFullRefreshOrderBook53";
 	static constexpr std::string_view SemanticType = "W";
 	uint32_t LastMsgSeqNumProcessed;
 	uint32_t TotNumReports;
@@ -685,6 +700,7 @@ struct MDInstrumentDefinitionFuture
 {
 	static constexpr uint16_t TemplateId = 54;
 	static constexpr uint16_t BlockLength = 224;
+	static constexpr std::string_view ObjectType = "MDInstrumentDefinitionFuture54";
 	static constexpr std::string_view SemanticType = "d";
 	Mdp3::MatchEventIndicator MatchEventIndicator;
 	uint32_t TotNumReports;
@@ -747,6 +763,7 @@ struct MDInstrumentDefinitionOption
 {
 	static constexpr uint16_t TemplateId = 55;
 	static constexpr uint16_t BlockLength = 221;
+	static constexpr std::string_view ObjectType = "MDInstrumentDefinitionOption55";
 	static constexpr std::string_view SemanticType = "d";
 	Mdp3::MatchEventIndicator MatchEventIndicator;
 	uint32_t TotNumReports;
@@ -807,6 +824,7 @@ struct MDInstrumentDefinitionSpread
 {
 	static constexpr uint16_t TemplateId = 56;
 	static constexpr uint16_t BlockLength = 255;
+	static constexpr std::string_view ObjectType = "MDInstrumentDefinitionSpread56";
 	static constexpr std::string_view SemanticType = "d";
 	Mdp3::MatchEventIndicator MatchEventIndicator;
 	uint32_t TotNumReports;
@@ -867,6 +885,7 @@ struct MDInstrumentDefinitionFixedIncome
 {
 	static constexpr uint16_t TemplateId = 57;
 	static constexpr uint16_t BlockLength = 338;
+	static constexpr std::string_view ObjectType = "MDInstrumentDefinitionFixedIncome57";
 	static constexpr std::string_view SemanticType = "d";
 	Mdp3::MatchEventIndicator MatchEventIndicator;
 	uint32_t TotNumReports;
@@ -936,6 +955,7 @@ struct MDInstrumentDefinitionRepo
 {
 	static constexpr uint16_t TemplateId = 58;
 	static constexpr uint16_t BlockLength = 276;
+	static constexpr std::string_view ObjectType = "MDInstrumentDefinitionRepo58";
 	static constexpr std::string_view SemanticType = "d";
 	Mdp3::MatchEventIndicator MatchEventIndicator;
 	uint32_t TotNumReports;
@@ -997,6 +1017,7 @@ struct SnapshotRefreshTopOrders
 {
 	static constexpr uint16_t TemplateId = 59;
 	static constexpr uint16_t BlockLength = 13;
+	static constexpr std::string_view ObjectType = "SnapshotRefreshTopOrders59";
 	static constexpr std::string_view SemanticType = "W";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -1016,6 +1037,7 @@ struct SecurityStatusWorkup
 {
 	static constexpr uint16_t TemplateId = 60;
 	static constexpr uint16_t BlockLength = 30;
+	static constexpr std::string_view ObjectType = "SecurityStatusWorkup60";
 	static constexpr std::string_view SemanticType = "f";
 	uint64_t TransactTime;
 	Mdp3::PRICENULL9 MDEntryPx;
@@ -1041,6 +1063,7 @@ struct SnapshotFullRefreshTCP
 {
 	static constexpr uint16_t TemplateId = 61;
 	static constexpr uint16_t BlockLength = 37;
+	static constexpr std::string_view ObjectType = "SnapshotFullRefreshTCP61";
 	static constexpr std::string_view SemanticType = "W";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -1063,6 +1086,7 @@ struct CollateralMarketValue
 {
 	static constexpr uint16_t TemplateId = 62;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "CollateralMarketValue62";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -1082,6 +1106,7 @@ struct MDInstrumentDefinitionFX
 {
 	static constexpr uint16_t TemplateId = 63;
 	static constexpr uint16_t BlockLength = 337;
+	static constexpr std::string_view ObjectType = "MDInstrumentDefinitionFX63";
 	static constexpr std::string_view SemanticType = "d";
 	Mdp3::MatchEventIndicator MatchEventIndicator;
 	uint32_t TotNumReports;
@@ -1146,6 +1171,7 @@ struct MDIncrementalRefreshBookLongQty
 {
 	static constexpr uint16_t TemplateId = 64;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshBookLongQty64";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -1165,6 +1191,7 @@ struct MDIncrementalRefreshTradeSummaryLongQty
 {
 	static constexpr uint16_t TemplateId = 65;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshTradeSummaryLongQty65";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -1184,6 +1211,7 @@ struct MDIncrementalRefreshVolumeLongQty
 {
 	static constexpr uint16_t TemplateId = 66;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshVolumeLongQty66";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -1203,6 +1231,7 @@ struct MDIncrementalRefreshSessionStatisticsLongQty
 {
 	static constexpr uint16_t TemplateId = 67;
 	static constexpr uint16_t BlockLength = 11;
+	static constexpr std::string_view ObjectType = "MDIncrementalRefreshSessionStatisticsLongQty67";
 	static constexpr std::string_view SemanticType = "X";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -1222,6 +1251,7 @@ struct SnapshotFullRefreshTCPLongQty
 {
 	static constexpr uint16_t TemplateId = 68;
 	static constexpr uint16_t BlockLength = 37;
+	static constexpr std::string_view ObjectType = "SnapshotFullRefreshTCPLongQty68";
 	static constexpr std::string_view SemanticType = "W";
 	uint64_t TransactTime;
 	Mdp3::MatchEventIndicator MatchEventIndicator;
@@ -1244,6 +1274,7 @@ struct SnapshotFullRefreshLongQty
 {
 	static constexpr uint16_t TemplateId = 69;
 	static constexpr uint16_t BlockLength = 59;
+	static constexpr std::string_view ObjectType = "SnapshotFullRefreshLongQty69";
 	static constexpr std::string_view SemanticType = "W";
 	uint32_t LastMsgSeqNumProcessed;
 	uint32_t TotNumReports;
@@ -1299,5 +1330,85 @@ enum class Template : uint16_t
 	SnapshotFullRefreshTCPLongQty = 68,
 	SnapshotFullRefreshLongQty = 69,
 };
+
+// Template id -> object-type name (e.g. 514 -> "NewOrderSingle514"), for logging.
+inline std::string_view ToObjectType(uint16_t templateId)
+{
+	switch (templateId)
+	{
+		case 4: return "ChannelReset4";
+		case 12: return "AdminHeartbeat12";
+		case 15: return "AdminLogin15";
+		case 16: return "AdminLogout16";
+		case 30: return "SecurityStatus30";
+		case 37: return "MDIncrementalRefreshVolume37";
+		case 39: return "QuoteRequest39";
+		case 46: return "MDIncrementalRefreshBook46";
+		case 47: return "MDIncrementalRefreshOrderBook47";
+		case 48: return "MDIncrementalRefreshTradeSummary48";
+		case 49: return "MDIncrementalRefreshDailyStatistics49";
+		case 50: return "MDIncrementalRefreshLimitsBanding50";
+		case 51: return "MDIncrementalRefreshSessionStatistics51";
+		case 52: return "SnapshotFullRefresh52";
+		case 53: return "SnapshotFullRefreshOrderBook53";
+		case 54: return "MDInstrumentDefinitionFuture54";
+		case 55: return "MDInstrumentDefinitionOption55";
+		case 56: return "MDInstrumentDefinitionSpread56";
+		case 57: return "MDInstrumentDefinitionFixedIncome57";
+		case 58: return "MDInstrumentDefinitionRepo58";
+		case 59: return "SnapshotRefreshTopOrders59";
+		case 60: return "SecurityStatusWorkup60";
+		case 61: return "SnapshotFullRefreshTCP61";
+		case 62: return "CollateralMarketValue62";
+		case 63: return "MDInstrumentDefinitionFX63";
+		case 64: return "MDIncrementalRefreshBookLongQty64";
+		case 65: return "MDIncrementalRefreshTradeSummaryLongQty65";
+		case 66: return "MDIncrementalRefreshVolumeLongQty66";
+		case 67: return "MDIncrementalRefreshSessionStatisticsLongQty67";
+		case 68: return "SnapshotFullRefreshTCPLongQty68";
+		case 69: return "SnapshotFullRefreshLongQty69";
+		default: return "Unknown";
+	}
+}
+
+// Template id + body -> the message as one compact JSON line, for logging.
+inline std::string ToJsonLine(uint16_t templateId, const void* body)
+{
+	switch (templateId)
+	{
+		case 4: return Tools::Json::SerializeToLine(*reinterpret_cast<const ChannelReset*>(body));
+		case 12: return Tools::Json::SerializeToLine(*reinterpret_cast<const AdminHeartbeat*>(body));
+		case 15: return Tools::Json::SerializeToLine(*reinterpret_cast<const AdminLogin*>(body));
+		case 16: return Tools::Json::SerializeToLine(*reinterpret_cast<const AdminLogout*>(body));
+		case 30: return Tools::Json::SerializeToLine(*reinterpret_cast<const SecurityStatus*>(body));
+		case 37: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshVolume*>(body));
+		case 39: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteRequest*>(body));
+		case 46: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshBook*>(body));
+		case 47: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshOrderBook*>(body));
+		case 48: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshTradeSummary*>(body));
+		case 49: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshDailyStatistics*>(body));
+		case 50: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshLimitsBanding*>(body));
+		case 51: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshSessionStatistics*>(body));
+		case 52: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefresh*>(body));
+		case 53: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefreshOrderBook*>(body));
+		case 54: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionFuture*>(body));
+		case 55: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionOption*>(body));
+		case 56: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionSpread*>(body));
+		case 57: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionFixedIncome*>(body));
+		case 58: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionRepo*>(body));
+		case 59: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotRefreshTopOrders*>(body));
+		case 60: return Tools::Json::SerializeToLine(*reinterpret_cast<const SecurityStatusWorkup*>(body));
+		case 61: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefreshTCP*>(body));
+		case 62: return Tools::Json::SerializeToLine(*reinterpret_cast<const CollateralMarketValue*>(body));
+		case 63: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionFX*>(body));
+		case 64: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshBookLongQty*>(body));
+		case 65: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshTradeSummaryLongQty*>(body));
+		case 66: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshVolumeLongQty*>(body));
+		case 67: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshSessionStatisticsLongQty*>(body));
+		case 68: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefreshTCPLongQty*>(body));
+		case 69: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefreshLongQty*>(body));
+		default: return "{}";
+	}
+}
 
 } // namespace Mdp3
