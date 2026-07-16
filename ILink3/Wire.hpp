@@ -135,6 +135,51 @@ inline size_t EncodeEstablish(const ILink3Config& config, uint64_t uuid, uint64_
 	return FrameMessage(dst, Establish::TemplateId, Establish::BlockLength, &establish, sizeof(establish), sizeof(uint16_t));
 }
 
+// Build a Limit-order NewOrderSingle with every optional field set to its "not present"
+// value. Getting these sentinels wrong is a classic source of rejects, so they are set once
+// here: a zero would be read as a real price or quantity. Price is in units of ten-to-the
+// minus-nine. The gateway fills SeqNum and SendingTimeEpoch when it sends, so they are left
+// zero here.
+inline NewOrderSingle NewLimitOrder(int32_t securityId, SideReq side, uint32_t quantity, int64_t priceMantissa,
+                                    const std::string& clOrdId, const std::string& senderId,
+                                    uint64_t partyDetailsListReqId, uint64_t orderRequestId, const std::string& location)
+{
+	// Step 1: The "absent" values for the optional fields.
+	constexpr int64_t PriceNull = INT64_MAX;          // PRICENULL9 not present
+	constexpr uint32_t QuantityNull = UINT32_MAX;     // optional quantity not present
+	constexpr uint16_t DateNull = 65535;              // optional date not present
+	constexpr uint8_t ByteNull = 255;                 // optional single-byte enum not present
+
+	// Step 2: The order the strategy actually wants.
+	NewOrderSingle order{};
+	order.Price.Mantissa = priceMantissa;
+	order.OrderQty = quantity;
+	order.SecurityID = securityId;
+	order.Side = side;
+	order.SenderID = senderId;
+	order.ClOrdID = clOrdId;
+	order.PartyDetailsListReqID = partyDetailsListReqId;
+	order.OrderRequestID = orderRequestId;
+	order.Location = location;
+	order.OrdType = OrderTypeReq::Limit;
+	order.TimeInForce = TimeInForce::Day;
+	order.ManualOrderIndicator = ManualOrdIndReq::Automated;
+
+	// Step 3: Everything optional we are not using, set to "not present".
+	order.StopPx.Mantissa = PriceNull;
+	order.MinQty = QuantityNull;
+	order.DisplayQty = QuantityNull;
+	order.ExpireDate = DateNull;
+	order.ExecInst.Value = 0;
+	order.ExecutionMode = static_cast<ExecMode>(0);           // absent -> aggressive default
+	order.LiquidityFlag = static_cast<BooleanNULL>(ByteNull);
+	order.ManagedOrder = static_cast<BooleanNULL>(ByteNull);
+	order.ShortSaleType = static_cast<ShortSaleType>(ByteNull);
+	order.DiscretionPrice.Mantissa = PriceNull;
+	order.ReservationPrice.Mantissa = PriceNull;
+	return order;
+}
+
 // Build a framed Sequence(506): the heartbeat that keeps the session alive, and the way we
 // tell CME our next outbound sequence number. Unlike the logon messages it is not signed and
 // has no trailing field. Returns bytes written.

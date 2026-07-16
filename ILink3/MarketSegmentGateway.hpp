@@ -131,6 +131,25 @@ public:
 		return true;
 	}
 
+	// Send a new order. The gateway stamps the sequence number and send time — the caller only
+	// fills the order details. Returns false if the session is not open.
+	bool SendNewOrderSingle(NewOrderSingle order)
+	{
+		// Step 1: Only send on an open session.
+		if (_state != SessionState::Established)
+			return false;
+
+		// Step 2: Stamp the fields the gateway owns: this message's sequence number and the
+		// current send time.
+		order.SeqNum = _outboundSeqNo;
+		order.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
+
+		// Step 3: Frame, send (and log), then advance our outbound sequence.
+		SendFramed(FrameMessage(_sendBuffer, NewOrderSingle::TemplateId, NewOrderSingle::BlockLength, &order, sizeof(order), 0));
+		++_outboundSeqNo;
+		return true;
+	}
+
 	// One service pass, called in a loop by the owning thread: take in whatever has arrived,
 	// then send a heartbeat if we have been silent too long.
 	void Poll()

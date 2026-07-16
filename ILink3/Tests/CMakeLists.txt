@@ -13,3 +13,7 @@ target_link_libraries(ILink3Logon PRIVATE ILink3Lib)
 # Live gateway test: log in and prove the keep-alive holds the session open (cannot trade).
 add_executable(ILink3Gateway "GatewayTests.cpp")
 target_link_libraries(ILink3Gateway PRIVATE ILink3Lib)
+
+# Live order test: send one NewOrderSingle and decode CME's execution-report reply.
+add_executable(ILink3Order "OrderTests.cpp")
+target_link_libraries(ILink3Order PRIVATE ILink3Lib)
