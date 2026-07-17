@@ -41,3 +41,7 @@ target_link_libraries(CmeServerTests PRIVATE ServerLib)
 # Live: market-data connectivity probe — join a channel's multicast feeds and report arrivals.
 add_executable(Mdp3Probe "Mdp3ProbeTests.cpp")
 target_link_libraries(Mdp3Probe PRIVATE Mdp3Lib ILink3Lib)
+
+# Live: decode a market-data feed — walk packets, print messages, tally kinds and gaps.
+add_executable(Mdp3Dump "Mdp3DumpTests.cpp")
+target_link_libraries(Mdp3Dump PRIVATE Mdp3Lib)

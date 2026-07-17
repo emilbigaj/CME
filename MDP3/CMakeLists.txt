@@ -5,6 +5,7 @@ project(MDP3)
 add_library(Mdp3Lib STATIC
 	"Empty.cpp"
 	"ChannelConfig.hpp"
+	"PacketWalker.hpp"
 	"UdpReceiver.hpp"
 )
 

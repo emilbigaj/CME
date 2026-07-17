@@ -2,4 +2,5 @@
 // commands for it and runs any static assertions in its headers.
 
 #include "ChannelConfig.hpp"
+#include "PacketWalker.hpp"
 #include "UdpReceiver.hpp"
