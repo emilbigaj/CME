@@ -29,3 +29,7 @@ target_link_libraries(ILink3ProbeParty PRIVATE ILink3Lib)
 # Offline: load a secdef file, report future/spread counts, list a product's front contracts.
 add_executable(SecDefTests "SecDefTests.cpp")
 target_link_libraries(SecDefTests PRIVATE SecDefLib)
+
+# Live: feed the InstrumentRouter a server order intent; it sends an iLink3 order and reconciles.
+add_executable(ILink3Router "RouterTests.cpp")
+target_link_libraries(ILink3Router PRIVATE ILink3Lib SecDefLib)
