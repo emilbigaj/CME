@@ -14,5 +14,4 @@ target_link_libraries(SecDefLib PUBLIC DataLib ToolsLib)
 # Anyone linking SecDefLib can include headers from this folder.
 target_include_directories(SecDefLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-# --- Standalone test programs ---
-add_subdirectory("Tests")
+# Test executables live in the top-level Tests/ folder, not here.

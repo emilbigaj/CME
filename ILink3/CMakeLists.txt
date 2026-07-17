@@ -28,5 +28,4 @@ target_link_libraries(ILink3Lib PUBLIC OpenSSL::Crypto)
 add_executable(ILink3Tests "Main.cpp")
 target_link_libraries(ILink3Tests PRIVATE ILink3Lib)
 
-# --- C. Standalone test programs (each its own executable) ---
-add_subdirectory("Tests")
+# Test executables live in the top-level Tests/ folder, not here.

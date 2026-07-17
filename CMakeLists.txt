@@ -29,3 +29,7 @@ add_subdirectory ("ILink3")
 
 # SecDef loads the CME security-definition file into the HFT instrument headers.
 add_subdirectory ("SecDef")
+
+# All test executables (each links the libraries it exercises). Added last so every target above
+# is in scope.
+add_subdirectory ("Tests")

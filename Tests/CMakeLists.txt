@@ -1,8 +1,7 @@
-# iLink3 standalone test programs. Each source is its own executable, all linking ILink3Lib
-# (which brings the SBE structs, config, HMAC signer, wire codec, and TCP client).
+# All CME test programs live here, one executable per source, each linking the libraries it
+# exercises. This folder is added after the library modules so their targets are in scope.
 
-# FIXP logon signer known-answer tests (RFC 4231 HMAC-SHA256, RFC 4648 base64url,
-# CME canonical message samples). Offline, deterministic.
+# FIXP logon signer known-answer tests (HMAC-SHA256, base64url, CME canonical samples). Offline.
 add_executable(HmacTests "HmacTests.cpp")
 target_link_libraries(HmacTests PRIVATE ILink3Lib)
 
@@ -26,3 +25,7 @@ target_link_libraries(ILink3DumpParty PRIVATE ILink3Lib)
 # Live diagnostic: probe which PartyDetailsListReqID values CME accepts (id 0 vs non-zero).
 add_executable(ILink3ProbeParty "ProbePartyDetails.cpp")
 target_link_libraries(ILink3ProbeParty PRIVATE ILink3Lib)
+
+# Offline: load a secdef file, report future/spread counts, list a product's front contracts.
+add_executable(SecDefTests "SecDefTests.cpp")
+target_link_libraries(SecDefTests PRIVATE SecDefLib)
