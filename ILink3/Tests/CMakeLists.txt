@@ -14,9 +14,10 @@ target_link_libraries(ILink3Logon PRIVATE ILink3Lib)
 add_executable(ILink3Gateway "GatewayTests.cpp")
 target_link_libraries(ILink3Gateway PRIVATE ILink3Lib)
 
-# Live order test: send one NewOrderSingle and decode CME's execution-report reply.
+# Live order test: look an instrument up in the secdef, send a resting NewOrderSingle on its
+# segment, and decode CME's execution-report reply.
 add_executable(ILink3Order "OrderTests.cpp")
-target_link_libraries(ILink3Order PRIVATE ILink3Lib)
+target_link_libraries(ILink3Order PRIVATE ILink3Lib SecDefLib)
 
 # Offline: hexdump an encoded PartyDetailsDefinitionRequest to verify group framing.
 add_executable(ILink3DumpParty "DumpPartyDetails.cpp")

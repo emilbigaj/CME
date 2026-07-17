@@ -26,3 +26,6 @@ add_subdirectory ("${CMAKE_CURRENT_SOURCE_DIR}/../HFT" "${CMAKE_BINARY_DIR}/HFT"
 # Schema holds the generated SBE structs (SchemaLib); protocol libs link it.
 add_subdirectory ("Schema")
 add_subdirectory ("ILink3")
+
+# SecDef loads the CME security-definition file into the HFT instrument headers.
+add_subdirectory ("SecDef")
