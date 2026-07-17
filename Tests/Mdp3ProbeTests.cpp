@@ -61,8 +61,8 @@ int main(int argc, char** argv)
 		}
 		std::cout << "Channel " << channel->Id << ": " << channel->Label << "\n";
 		for (const Mdp3::Connection& connection : channel->Connections)
-			std::cout << "  " << connection.Id << "  " << connection.TypeName << " " << connection.Feed
-			          << "  " << connection.Protocol << "  " << (connection.IsUdp() ? connection.GroupIp : connection.HostIp)
+			std::cout << "  " << connection.Id << "  " << connection.Type << " " << connection.Feed
+			          << "  " << connection.Protocol << "  " << (connection.IsUdp() ? connection.Ip : connection.HostIp)
 			          << ":" << connection.Port << "\n";
 
 		// Step 2: Join the incremental pair and the snapshot feed on the requested interface.
@@ -74,8 +74,8 @@ int main(int argc, char** argv)
 				continue;
 			FeedProbe& probe = probes.emplace_back();
 			probe.Connection = connection;
-			probe.Receiver.Join(connection->GroupIp, connection->Port, interfaceIp);
-			std::cout << "Joined " << connection->Id << " (" << connection->GroupIp << ":" << connection->Port
+			probe.Receiver.Join(connection->Ip, connection->Port, interfaceIp);
+			std::cout << "Joined " << connection->Id << " (" << connection->Ip << ":" << connection->Port
 			          << ") on " << interfaceIp << "\n";
 		}
 

@@ -30,11 +30,11 @@ namespace Mdp3
 struct Connection
 {
 	std::string Id;         // e.g. "310IA"
-	std::string TypeCode;   // "I", "S", "N", "H", "SMBO", ...
-	std::string TypeName;   // e.g. "Incremental"
+	std::string FeedType;   // "I", "S", "N", "H", "SMBO", ...
+	std::string Type;       // e.g. "Incremental"
 	char Feed = 'A';        // 'A' or 'B'
 	std::string Protocol;   // "UDP/IP" or "TCP/IP"
-	std::string GroupIp;    // multicast group to join (empty for the TCP services)
+	std::string Ip;         // multicast group to join (empty for the TCP services)
 	std::string HostIp;     // the publishing host (the TCP services' address)
 	uint16_t Port = 0;
 
@@ -50,10 +50,10 @@ struct Channel
 	std::vector<Connection> Connections;
 
 	// Find a feed by type code and side, or null if the channel has none.
-	const Connection* Find(const std::string& typeCode, char feed) const
+	const Connection* Find(const std::string& feedType, char feed) const
 	{
 		for (const Connection& connection : Connections)
-			if (connection.TypeCode == typeCode && connection.Feed == feed)
+			if (connection.FeedType == feedType && connection.Feed == feed)
 				return &connection;
 		return nullptr;
 	}
@@ -144,9 +144,9 @@ private:
 	{
 		Connection connection;
 		connection.Id = std::string(Attribute(block, "id"));
-		connection.TypeCode = std::string(Attribute(block, "feed-type"));
-		connection.TypeName = std::string(ElementText(block, "type"));
-		connection.GroupIp = std::string(ElementText(block, "ip"));
+		connection.FeedType = std::string(Attribute(block, "feed-type"));
+		connection.Type = std::string(ElementText(block, "type"));
+		connection.Ip = std::string(ElementText(block, "ip"));
 		connection.HostIp = std::string(ElementText(block, "host-ip"));
 		connection.Port = static_cast<uint16_t>(ParseInt(ElementText(block, "port")));
 		connection.Protocol = std::string(ElementText(block, "protocol"));

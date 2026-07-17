@@ -48,8 +48,8 @@ int main(int argc, char** argv)
 
 		// Step 2: Join it.
 		Mdp3::UdpReceiver receiver;
-		receiver.Join(feed->GroupIp, feed->Port, interfaceIp);
-		std::cout << "Joined " << feed->Id << " (" << feed->GroupIp << ":" << feed->Port << ") on "
+		receiver.Join(feed->Ip, feed->Port, interfaceIp);
+		std::cout << "Joined " << feed->Id << " (" << feed->Ip << ":" << feed->Port << ") on "
 		          << interfaceIp << "; listening " << seconds << "s...\n\n";
 
 		// Step 3: Walk every packet: print the first few messages whole, tally the rest.
