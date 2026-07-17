@@ -36,18 +36,19 @@ int main(int argc, char** argv)
 		// Step 2: Load settings and start the background logger.
 		ILink3::ILink3Config config = ILink3::ILink3Config::Load(configPath);
 		ILink3::CmeLoggerManager loggerManager;
-		ILink3::CmeLogger& logger = loggerManager.Create(
+		ILink3::CmeLogger& logger = loggerManager.NewLogger(
 			ILink3::CmeLoggerManager::LogDirectory("/mnt/S", config.Environment, marketSegmentId), marketSegmentId);
 		loggerManager.Start();
 
-		// Step 3: Build the gateway and print each business reply it hands back.
+		// Step 3: Build the gateway and print each business reply it hands back. On-demand sends
+		// two messages (party details then order), so CME may reply with two — print them all.
 		ILink3::MarketSegmentGateway gateway(config, marketSegmentId, &logger);
-		bool gotReply = false;
+		int replyCount = 0;
 		gateway.OnBusinessMessage = [&](const ILink3::FramedMessage& message)
 		{
 			std::cout << "\nCME replied with " << ILink3::ToObjectType(message.TemplateId) << ":\n"
 			          << ILink3::ToJsonLine(message.TemplateId, message.Body) << "\n";
-			gotReply = true;
+			++replyCount;
 		};
 
 		// Step 4: Connect and log in.
@@ -58,31 +59,32 @@ int main(int argc, char** argv)
 			loggerManager.Stop();
 			return 1;
 		}
-		std::cout << "Session established. Sending a NewOrderSingle...\n";
+		std::cout << "Session established. Sending a NewOrderSingle (on-demand parties)...\n";
 
-		// Step 5: Send one Limit buy: 1 lot at price 1.0 (mantissa = 1 * 10^9).
+		// Step 5: Send one Limit buy: 1 lot at price 1.0 (mantissa = 1 * 10^9). The gateway
+		// sends the party details (id 0) immediately before the order and references id 0 on it;
+		// the caller supplies the desk sender id and location from config.
 		ILink3::NewOrderSingle order = ILink3::NewLimitOrder(
 			securityId, ILink3::SideReq::Buy, /*quantity*/ 1, /*priceMantissa*/ 1'000'000'000LL,
-			/*clOrdId*/ "CELERITY0001", /*senderId*/ "CELERITY",
-			/*partyDetailsListReqId*/ 0, /*orderRequestId*/ 1, /*location*/ "NY");
+			/*clOrdId*/ "CELERITY0001", /*senderId*/ config.Parties.Operator,
+			/*partyDetailsListReqId*/ 0, /*orderRequestId*/ 1, /*location*/ config.Parties.Location);
 		gateway.SendNewOrderSingle(order);
 
-		// Step 6: Poll until the reply arrives or we give up after ~8 seconds.
+		// Step 6: Poll for a fixed few seconds so both replies (party details + order) arrive.
 		const int64_t start = Tools::Timestamp::UtcNow().NanosSinceEpoch;
-		while (!gotReply && gateway.State() == ILink3::SessionState::Established)
+		while (gateway.State() == ILink3::SessionState::Established)
 		{
 			gateway.Poll();
-			if ((Tools::Timestamp::UtcNow().NanosSinceEpoch - start) / 1'000'000'000LL >= 8)
-			{
-				std::cout << "No reply within 8s.\n";
+			if ((Tools::Timestamp::UtcNow().NanosSinceEpoch - start) / 1'000'000'000LL >= 5)
 				break;
-			}
 		}
+		if (replyCount == 0)
+			std::cout << "No reply within 5s.\n";
 
 		// Step 7: Close cleanly and flush the logger.
 		gateway.Disconnect();
 		loggerManager.Stop();
-		return gotReply ? 0 : 1;
+		return replyCount > 0 ? 0 : 1;
 	}
 	catch (const std::exception& exception)
 	{

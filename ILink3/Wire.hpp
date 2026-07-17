@@ -180,6 +180,70 @@ inline NewOrderSingle NewLimitOrder(int32_t securityId, SideReq side, uint32_t q
 	return order;
 }
 
+// Build a framed PartyDetailsDefinitionRequest(518): registers the trading parties (firm,
+// account, operator, and clearing firm on a give-up) under `partyDetailsListReqId`, which
+// every order then references. The caller supplies the sequence number and send time. Returns
+// bytes written.
+inline size_t EncodePartyDetailsDefinitionRequest(const PartyDetailsConfig& parties, uint64_t partyDetailsListReqId,
+                                                  uint32_t seqNo, uint64_t sendingTimeEpoch, std::span<uint8_t> dst)
+{
+	// Step 1: Fill the root block. Optional fields we are not using get their null values.
+	constexpr uint64_t UInt64Null = UINT64_MAX;
+	PartyDetailsDefinitionRequest root{};
+	root.PartyDetailsListReqID = partyDetailsListReqId;
+	root.SendingTimeEpoch = sendingTimeEpoch;
+	root.ListUpdateAction = ListUpdAct::Add;
+	root.SeqNum = seqNo;
+
+	//Information required to accept and match the order on the central limit order book 
+	root.SelfMatchPreventionID = parties.SelfMatchPreventionID;
+	root.SelfMatchPreventionInstruction = static_cast<SMPI>(parties.SelfMatchPreventionInstruction);
+
+	//Information required to clear the trade 
+	root.CustOrderHandlingInst = static_cast<CustOrdHandlInst>(parties.CustOrderHandlingInst);
+	root.AvgPxIndicator = static_cast<AvgPxInd>(parties.AvgPxIndicator);
+	root.ClearingTradePriceType = static_cast<SLEDS>(parties.ClearingTradePriceType);
+	root.CmtaGiveupCD = parties.TakeUpFirm.empty() ? static_cast<CmtaGiveUpCD>(0) : CmtaGiveUpCD::GiveUp;
+
+	
+
+	root.CustOrderCapacity = static_cast<CustOrderCapacity>(parties.CustOrderCapacity);
+	root.ClearingAccountType = static_cast<ClearingAcctType>(parties.ClearingAccountType);
+	root.Executor = UInt64Null;
+	root.IDMShortCode = UInt64Null;
+
+	// Step 2: Copy the root block to the start of the message body.
+	uint8_t body[512];
+	std::memcpy(body, &root, sizeof(root));
+	size_t pos = PartyDetailsDefinitionRequest::BlockLength;
+
+	// Step 3: Gather the party entries that are set (skip any that are empty). Information
+	// required for market regulation compliance, in CME's documented role order: take-up firm
+	// and account (give-up only), then executing firm, operator, and customer account.
+	PartyDetailsDefinitionRequest_NoPartyDetails entries[5]{};
+	uint8_t count = 0;
+	auto addParty = [&](const std::string& id, PartyDetailRole role)
+	{
+		if (id.empty())
+			return;
+		entries[count].PartyDetailID = id;
+		entries[count].PartyDetailRole = role;
+		++count;
+	};
+	addParty(parties.TakeUpFirm, PartyDetailRole::TakeUpFirm);           // 96
+	addParty(parties.TakeUpAccount, PartyDetailRole::TakeUpAccount);     // 1000
+	addParty(parties.ExecutingFirm, PartyDetailRole::ExecutingFirm);     // 1
+	addParty(parties.Operator, PartyDetailRole::Operator);               // 118
+	addParty(parties.CustomerAccount, PartyDetailRole::CustomerAccount); // 24
+
+	// Step 4: Append the party group, then an empty regulatory-publications group.
+	pos += Sbe::WriteGroup(body + pos, entries, count);
+	pos += Sbe::WriteGroup<PartyDetailsDefinitionRequest_NoTrdRegPublications>(body + pos, nullptr, 0);
+
+	// Step 5: Frame the whole body (root + groups); the header block length is the root only.
+	return FrameMessage(dst, PartyDetailsDefinitionRequest::TemplateId, PartyDetailsDefinitionRequest::BlockLength, body, pos, 0);
+}
+
 // Build a framed Sequence(506): the heartbeat that keeps the session alive, and the way we
 // tell CME our next outbound sequence number. Unlike the logon messages it is not signed and
 // has no trailing field. Returns bytes written.

@@ -9,6 +9,7 @@ project(Schema)
 add_library(SchemaLib STATIC
 	"ILink3Sbe.hpp"
 	"Mdp3Sbe.hpp"
+	"SbeGroup.hpp"
 	"Empty.cpp"
 )
 

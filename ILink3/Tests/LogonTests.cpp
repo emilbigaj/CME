@@ -55,7 +55,7 @@ int main(int argc, char** argv)
 		ILink3::CmeLoggerManager loggerManager;
 		const std::filesystem::path logDirectory =
 			ILink3::CmeLoggerManager::LogDirectory("/mnt/S", config.Environment, marketSegmentId);
-		ILink3::CmeLogger& logger = loggerManager.Create(logDirectory, marketSegmentId);
+		ILink3::CmeLogger& logger = loggerManager.NewLogger(logDirectory, marketSegmentId);
 		loggerManager.Start();
 		std::cout << "Logging to " << logDirectory.string() << "\n";
 

@@ -9,6 +9,7 @@
 #include "String.hpp"   // Tools::StringN
 #include "Json.hpp"     // Tools::Json + enum glaze meta (magic_enum)
 #include "Tools.hpp"    // Tools::PlainOldData
+#include "SbeGroup.hpp" // Sbe::GroupReader / GroupSize (repeating groups)
 
 namespace ILink3
 {
@@ -494,10 +495,10 @@ struct PRICENULL9
 static_assert(Tools::PlainOldData<PRICENULL9>);
 static_assert(sizeof(PRICENULL9) == 8);
 
-// ===== Messages (fixed root block; groups/data are phase 2) =====
-#pragma pack(push, 1)
+// ===== Messages (fixed root block; repeating groups walked for logging) =====
 // Negotiate500  (template 500, blockLength 76, semanticType "Negotiate")
-// PHASE 2 trailing after root block: data Credentials
+// trailing variable-length data (not modelled): Credentials
+#pragma pack(push, 1)
 struct Negotiate
 {
 	static constexpr uint16_t TemplateId = 500;
@@ -518,11 +519,11 @@ struct Negotiate
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<Negotiate>);
-static_assert(sizeof(Negotiate) == Negotiate::BlockLength, "Negotiate root block size mismatch");
+static_assert(sizeof(Negotiate) == 76, "Negotiate block size mismatch");
 
-#pragma pack(push, 1)
 // NegotiationResponse501  (template 501, blockLength 33, semanticType "NegotiationResponse")
-// PHASE 2 trailing after root block: data Credentials
+// trailing variable-length data (not modelled): Credentials
+#pragma pack(push, 1)
 struct NegotiationResponse
 {
 	static constexpr uint16_t TemplateId = 501;
@@ -544,10 +545,10 @@ struct NegotiationResponse
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<NegotiationResponse>);
-static_assert(sizeof(NegotiationResponse) == NegotiationResponse::BlockLength, "NegotiationResponse root block size mismatch");
+static_assert(sizeof(NegotiationResponse) == 33, "NegotiationResponse block size mismatch");
 
-#pragma pack(push, 1)
 // NegotiationReject502  (template 502, blockLength 69, semanticType "NegotiationReject")
+#pragma pack(push, 1)
 struct NegotiationReject
 {
 	static constexpr uint16_t TemplateId = 502;
@@ -567,11 +568,11 @@ struct NegotiationReject
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<NegotiationReject>);
-static_assert(sizeof(NegotiationReject) == NegotiationReject::BlockLength, "NegotiationReject root block size mismatch");
+static_assert(sizeof(NegotiationReject) == 69, "NegotiationReject block size mismatch");
 
-#pragma pack(push, 1)
 // Establish503  (template 503, blockLength 132, semanticType "Establish")
-// PHASE 2 trailing after root block: data Credentials
+// trailing variable-length data (not modelled): Credentials
+#pragma pack(push, 1)
 struct Establish
 {
 	static constexpr uint16_t TemplateId = 503;
@@ -596,10 +597,10 @@ struct Establish
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<Establish>);
-static_assert(sizeof(Establish) == Establish::BlockLength, "Establish root block size mismatch");
+static_assert(sizeof(Establish) == 132, "Establish block size mismatch");
 
-#pragma pack(push, 1)
 // EstablishmentAck504  (template 504, blockLength 39, semanticType "EstablishmentAck")
+#pragma pack(push, 1)
 struct EstablishmentAck
 {
 	static constexpr uint16_t TemplateId = 504;
@@ -622,10 +623,10 @@ struct EstablishmentAck
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<EstablishmentAck>);
-static_assert(sizeof(EstablishmentAck) == EstablishmentAck::BlockLength, "EstablishmentAck root block size mismatch");
+static_assert(sizeof(EstablishmentAck) == 39, "EstablishmentAck block size mismatch");
 
-#pragma pack(push, 1)
 // EstablishmentReject505  (template 505, blockLength 73, semanticType "EstablishmentReject")
+#pragma pack(push, 1)
 struct EstablishmentReject
 {
 	static constexpr uint16_t TemplateId = 505;
@@ -646,10 +647,10 @@ struct EstablishmentReject
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<EstablishmentReject>);
-static_assert(sizeof(EstablishmentReject) == EstablishmentReject::BlockLength, "EstablishmentReject root block size mismatch");
+static_assert(sizeof(EstablishmentReject) == 73, "EstablishmentReject block size mismatch");
 
-#pragma pack(push, 1)
 // Sequence506  (template 506, blockLength 14, semanticType "Sequence")
+#pragma pack(push, 1)
 struct Sequence
 {
 	static constexpr uint16_t TemplateId = 506;
@@ -666,10 +667,10 @@ struct Sequence
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<Sequence>);
-static_assert(sizeof(Sequence) == Sequence::BlockLength, "Sequence root block size mismatch");
+static_assert(sizeof(Sequence) == 14, "Sequence block size mismatch");
 
-#pragma pack(push, 1)
 // Terminate507  (template 507, blockLength 67, semanticType "Terminate")
+#pragma pack(push, 1)
 struct Terminate
 {
 	static constexpr uint16_t TemplateId = 507;
@@ -687,10 +688,10 @@ struct Terminate
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<Terminate>);
-static_assert(sizeof(Terminate) == Terminate::BlockLength, "Terminate root block size mismatch");
+static_assert(sizeof(Terminate) == 67, "Terminate block size mismatch");
 
-#pragma pack(push, 1)
 // RetransmitRequest508  (template 508, blockLength 30, semanticType "RetransmitRequest")
+#pragma pack(push, 1)
 struct RetransmitRequest
 {
 	static constexpr uint16_t TemplateId = 508;
@@ -708,10 +709,10 @@ struct RetransmitRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<RetransmitRequest>);
-static_assert(sizeof(RetransmitRequest) == RetransmitRequest::BlockLength, "RetransmitRequest root block size mismatch");
+static_assert(sizeof(RetransmitRequest) == 30, "RetransmitRequest block size mismatch");
 
-#pragma pack(push, 1)
 // Retransmission509  (template 509, blockLength 31, semanticType "Retransmission")
+#pragma pack(push, 1)
 struct Retransmission
 {
 	static constexpr uint16_t TemplateId = 509;
@@ -730,10 +731,10 @@ struct Retransmission
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<Retransmission>);
-static_assert(sizeof(Retransmission) == Retransmission::BlockLength, "Retransmission root block size mismatch");
+static_assert(sizeof(Retransmission) == 31, "Retransmission block size mismatch");
 
-#pragma pack(push, 1)
 // RetransmitReject510  (template 510, blockLength 75, semanticType "RetransmitReject")
+#pragma pack(push, 1)
 struct RetransmitReject
 {
 	static constexpr uint16_t TemplateId = 510;
@@ -752,10 +753,10 @@ struct RetransmitReject
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<RetransmitReject>);
-static_assert(sizeof(RetransmitReject) == RetransmitReject::BlockLength, "RetransmitReject root block size mismatch");
+static_assert(sizeof(RetransmitReject) == 75, "RetransmitReject block size mismatch");
 
-#pragma pack(push, 1)
 // NotApplied513  (template 513, blockLength 17, semanticType "NotApplied")
+#pragma pack(push, 1)
 struct NotApplied
 {
 	static constexpr uint16_t TemplateId = 513;
@@ -772,10 +773,10 @@ struct NotApplied
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<NotApplied>);
-static_assert(sizeof(NotApplied) == NotApplied::BlockLength, "NotApplied root block size mismatch");
+static_assert(sizeof(NotApplied) == 17, "NotApplied block size mismatch");
 
-#pragma pack(push, 1)
 // NewOrderSingle514  (template 514, blockLength 132, semanticType "D")
+#pragma pack(push, 1)
 struct NewOrderSingle
 {
 	static constexpr uint16_t TemplateId = 514;
@@ -813,10 +814,10 @@ struct NewOrderSingle
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<NewOrderSingle>);
-static_assert(sizeof(NewOrderSingle) == NewOrderSingle::BlockLength, "NewOrderSingle root block size mismatch");
+static_assert(sizeof(NewOrderSingle) == 132, "NewOrderSingle block size mismatch");
 
-#pragma pack(push, 1)
 // OrderCancelReplaceRequest515  (template 515, blockLength 133, semanticType "G")
+#pragma pack(push, 1)
 struct OrderCancelReplaceRequest
 {
 	static constexpr uint16_t TemplateId = 515;
@@ -855,10 +856,10 @@ struct OrderCancelReplaceRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<OrderCancelReplaceRequest>);
-static_assert(sizeof(OrderCancelReplaceRequest) == OrderCancelReplaceRequest::BlockLength, "OrderCancelReplaceRequest root block size mismatch");
+static_assert(sizeof(OrderCancelReplaceRequest) == 133, "OrderCancelReplaceRequest block size mismatch");
 
-#pragma pack(push, 1)
 // OrderCancelRequest516  (template 516, blockLength 96, semanticType "F")
+#pragma pack(push, 1)
 struct OrderCancelRequest
 {
 	static constexpr uint16_t TemplateId = 516;
@@ -884,11 +885,10 @@ struct OrderCancelRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<OrderCancelRequest>);
-static_assert(sizeof(OrderCancelRequest) == OrderCancelRequest::BlockLength, "OrderCancelRequest root block size mismatch");
+static_assert(sizeof(OrderCancelRequest) == 96, "OrderCancelRequest block size mismatch");
 
-#pragma pack(push, 1)
 // MassQuote517  (template 517, blockLength 123, semanticType "i")
-// PHASE 2 trailing after root block: group NoQuoteEntries
+#pragma pack(push, 1)
 struct MassQuote
 {
 	static constexpr uint16_t TemplateId = 517;
@@ -916,11 +916,39 @@ struct MassQuote
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MassQuote>);
-static_assert(sizeof(MassQuote) == MassQuote::BlockLength, "MassQuote root block size mismatch");
+static_assert(sizeof(MassQuote) == 123, "MassQuote block size mismatch");
 
+// group NoQuoteEntries of MassQuote  (entry blockLength 38)
 #pragma pack(push, 1)
+struct MassQuote_NoQuoteEntries
+{
+	static constexpr uint16_t BlockLength = 38;
+	ILink3::PRICENULL9 BidPx;
+	ILink3::PRICENULL9 OfferPx;
+	uint32_t QuoteEntryID;
+	int32_t SecurityID;
+	uint32_t BidSize;
+	uint32_t OfferSize;
+	int32_t UnderlyingSecurityID;
+	uint16_t QuoteSetID;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MassQuote_NoQuoteEntries;
+		static constexpr auto value = glz::object("BidPx", &T::BidPx, "OfferPx", &T::OfferPx, "QuoteEntryID", &T::QuoteEntryID, "SecurityID", &T::SecurityID, "BidSize", &T::BidSize, "OfferSize", &T::OfferSize, "UnderlyingSecurityID", &T::UnderlyingSecurityID, "QuoteSetID", &T::QuoteSetID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MassQuote_NoQuoteEntries>);
+static_assert(sizeof(MassQuote_NoQuoteEntries) == 38, "MassQuote_NoQuoteEntries block size mismatch");
+
+// Walks the repeating groups of a MassQuote in wire order.
+struct MassQuoteGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MassQuoteGroups Of(const MassQuote& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MassQuote_NoQuoteEntries> NoQuoteEntries() const { return Sbe::GroupReader<MassQuote_NoQuoteEntries>(Root + MassQuote::BlockLength); }
+};
+
 // PartyDetailsDefinitionRequest518  (template 518, blockLength 147, semanticType "CX")
-// PHASE 2 trailing after root block: group NoPartyDetails, group NoTrdRegPublications
+#pragma pack(push, 1)
 struct PartyDetailsDefinitionRequest
 {
 	static constexpr uint16_t TemplateId = 518;
@@ -950,11 +978,50 @@ struct PartyDetailsDefinitionRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<PartyDetailsDefinitionRequest>);
-static_assert(sizeof(PartyDetailsDefinitionRequest) == PartyDetailsDefinitionRequest::BlockLength, "PartyDetailsDefinitionRequest root block size mismatch");
+static_assert(sizeof(PartyDetailsDefinitionRequest) == 147, "PartyDetailsDefinitionRequest block size mismatch");
 
+// group NoPartyDetails of PartyDetailsDefinitionRequest  (entry blockLength 22)
 #pragma pack(push, 1)
+struct PartyDetailsDefinitionRequest_NoPartyDetails
+{
+	static constexpr uint16_t BlockLength = 22;
+	Tools::StringN<20> PartyDetailID;
+	ILink3::PartyDetailRole PartyDetailRole;
+	static constexpr char PartyDetailIDSource = 'C';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = PartyDetailsDefinitionRequest_NoPartyDetails;
+		static constexpr auto value = glz::object("PartyDetailID", &T::PartyDetailID, "PartyDetailRole", &T::PartyDetailRole); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<PartyDetailsDefinitionRequest_NoPartyDetails>);
+static_assert(sizeof(PartyDetailsDefinitionRequest_NoPartyDetails) == 22, "PartyDetailsDefinitionRequest_NoPartyDetails block size mismatch");
+
+// group NoTrdRegPublications of PartyDetailsDefinitionRequest  (entry blockLength 2)
+#pragma pack(push, 1)
+struct PartyDetailsDefinitionRequest_NoTrdRegPublications
+{
+	static constexpr uint16_t BlockLength = 2;
+	uint8_t TrdRegPublicationType;
+	uint8_t TrdRegPublicationReason;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = PartyDetailsDefinitionRequest_NoTrdRegPublications;
+		static constexpr auto value = glz::object("TrdRegPublicationType", &T::TrdRegPublicationType, "TrdRegPublicationReason", &T::TrdRegPublicationReason); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<PartyDetailsDefinitionRequest_NoTrdRegPublications>);
+static_assert(sizeof(PartyDetailsDefinitionRequest_NoTrdRegPublications) == 2, "PartyDetailsDefinitionRequest_NoTrdRegPublications block size mismatch");
+
+// Walks the repeating groups of a PartyDetailsDefinitionRequest in wire order.
+struct PartyDetailsDefinitionRequestGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static PartyDetailsDefinitionRequestGroups Of(const PartyDetailsDefinitionRequest& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<PartyDetailsDefinitionRequest_NoPartyDetails> NoPartyDetails() const { return Sbe::GroupReader<PartyDetailsDefinitionRequest_NoPartyDetails>(Root + PartyDetailsDefinitionRequest::BlockLength); }
+	Sbe::GroupReader<PartyDetailsDefinitionRequest_NoTrdRegPublications> NoTrdRegPublications() const { return Sbe::GroupReader<PartyDetailsDefinitionRequest_NoTrdRegPublications>(NoPartyDetails().End()); }
+};
+
 // PartyDetailsDefinitionRequestAck519  (template 519, blockLength 159, semanticType "CY")
-// PHASE 2 trailing after root block: group NoPartyDetails, group NoTrdRegPublications
+#pragma pack(push, 1)
 struct PartyDetailsDefinitionRequestAck
 {
 	static constexpr uint16_t TemplateId = 519;
@@ -989,10 +1056,50 @@ struct PartyDetailsDefinitionRequestAck
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<PartyDetailsDefinitionRequestAck>);
-static_assert(sizeof(PartyDetailsDefinitionRequestAck) == PartyDetailsDefinitionRequestAck::BlockLength, "PartyDetailsDefinitionRequestAck root block size mismatch");
+static_assert(sizeof(PartyDetailsDefinitionRequestAck) == 159, "PartyDetailsDefinitionRequestAck block size mismatch");
 
+// group NoPartyDetails of PartyDetailsDefinitionRequestAck  (entry blockLength 22)
 #pragma pack(push, 1)
+struct PartyDetailsDefinitionRequestAck_NoPartyDetails
+{
+	static constexpr uint16_t BlockLength = 22;
+	Tools::StringN<20> PartyDetailID;
+	ILink3::PartyDetailRole PartyDetailRole;
+	static constexpr char PartyDetailIDSource = 'C';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = PartyDetailsDefinitionRequestAck_NoPartyDetails;
+		static constexpr auto value = glz::object("PartyDetailID", &T::PartyDetailID, "PartyDetailRole", &T::PartyDetailRole); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<PartyDetailsDefinitionRequestAck_NoPartyDetails>);
+static_assert(sizeof(PartyDetailsDefinitionRequestAck_NoPartyDetails) == 22, "PartyDetailsDefinitionRequestAck_NoPartyDetails block size mismatch");
+
+// group NoTrdRegPublications of PartyDetailsDefinitionRequestAck  (entry blockLength 2)
+#pragma pack(push, 1)
+struct PartyDetailsDefinitionRequestAck_NoTrdRegPublications
+{
+	static constexpr uint16_t BlockLength = 2;
+	uint8_t TrdRegPublicationType;
+	uint8_t TrdRegPublicationReason;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = PartyDetailsDefinitionRequestAck_NoTrdRegPublications;
+		static constexpr auto value = glz::object("TrdRegPublicationType", &T::TrdRegPublicationType, "TrdRegPublicationReason", &T::TrdRegPublicationReason); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<PartyDetailsDefinitionRequestAck_NoTrdRegPublications>);
+static_assert(sizeof(PartyDetailsDefinitionRequestAck_NoTrdRegPublications) == 2, "PartyDetailsDefinitionRequestAck_NoTrdRegPublications block size mismatch");
+
+// Walks the repeating groups of a PartyDetailsDefinitionRequestAck in wire order.
+struct PartyDetailsDefinitionRequestAckGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static PartyDetailsDefinitionRequestAckGroups Of(const PartyDetailsDefinitionRequestAck& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<PartyDetailsDefinitionRequestAck_NoPartyDetails> NoPartyDetails() const { return Sbe::GroupReader<PartyDetailsDefinitionRequestAck_NoPartyDetails>(Root + PartyDetailsDefinitionRequestAck::BlockLength); }
+	Sbe::GroupReader<PartyDetailsDefinitionRequestAck_NoTrdRegPublications> NoTrdRegPublications() const { return Sbe::GroupReader<PartyDetailsDefinitionRequestAck_NoTrdRegPublications>(NoPartyDetails().End()); }
+};
+
 // BusinessReject521  (template 521, blockLength 330, semanticType "j")
+#pragma pack(push, 1)
 struct BusinessReject
 {
 	static constexpr uint16_t TemplateId = 521;
@@ -1020,10 +1127,10 @@ struct BusinessReject
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<BusinessReject>);
-static_assert(sizeof(BusinessReject) == BusinessReject::BlockLength, "BusinessReject root block size mismatch");
+static_assert(sizeof(BusinessReject) == 330, "BusinessReject block size mismatch");
 
-#pragma pack(push, 1)
 // ExecutionReportNew522  (template 522, blockLength 226, semanticType "8")
+#pragma pack(push, 1)
 struct ExecutionReportNew
 {
 	static constexpr uint16_t TemplateId = 522;
@@ -1075,10 +1182,10 @@ struct ExecutionReportNew
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportNew>);
-static_assert(sizeof(ExecutionReportNew) == ExecutionReportNew::BlockLength, "ExecutionReportNew root block size mismatch");
+static_assert(sizeof(ExecutionReportNew) == 226, "ExecutionReportNew block size mismatch");
 
-#pragma pack(push, 1)
 // ExecutionReportReject523  (template 523, blockLength 483, semanticType "8")
+#pragma pack(push, 1)
 struct ExecutionReportReject
 {
 	static constexpr uint16_t TemplateId = 523;
@@ -1131,10 +1238,10 @@ struct ExecutionReportReject
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportReject>);
-static_assert(sizeof(ExecutionReportReject) == ExecutionReportReject::BlockLength, "ExecutionReportReject root block size mismatch");
+static_assert(sizeof(ExecutionReportReject) == 483, "ExecutionReportReject block size mismatch");
 
-#pragma pack(push, 1)
 // ExecutionReportElimination524  (template 524, blockLength 219, semanticType "8")
+#pragma pack(push, 1)
 struct ExecutionReportElimination
 {
 	static constexpr uint16_t TemplateId = 524;
@@ -1184,11 +1291,10 @@ struct ExecutionReportElimination
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportElimination>);
-static_assert(sizeof(ExecutionReportElimination) == ExecutionReportElimination::BlockLength, "ExecutionReportElimination root block size mismatch");
+static_assert(sizeof(ExecutionReportElimination) == 219, "ExecutionReportElimination block size mismatch");
 
-#pragma pack(push, 1)
 // ExecutionReportTradeOutright525  (template 525, blockLength 293, semanticType "8")
-// PHASE 2 trailing after root block: group NoFills, group NoOrderEvents
+#pragma pack(push, 1)
 struct ExecutionReportTradeOutright
 {
 	static constexpr uint16_t TemplateId = 525;
@@ -1254,11 +1360,57 @@ struct ExecutionReportTradeOutright
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportTradeOutright>);
-static_assert(sizeof(ExecutionReportTradeOutright) == ExecutionReportTradeOutright::BlockLength, "ExecutionReportTradeOutright root block size mismatch");
+static_assert(sizeof(ExecutionReportTradeOutright) == 293, "ExecutionReportTradeOutright block size mismatch");
 
+// group NoFills of ExecutionReportTradeOutright  (entry blockLength 15)
 #pragma pack(push, 1)
+struct ExecutionReportTradeOutright_NoFills
+{
+	static constexpr uint16_t BlockLength = 15;
+	ILink3::PRICE9 FillPx;
+	uint32_t FillQty;
+	Tools::StringN<2> FillExecID;
+	uint8_t FillYieldType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeOutright_NoFills;
+		static constexpr auto value = glz::object("FillPx", &T::FillPx, "FillQty", &T::FillQty, "FillExecID", &T::FillExecID, "FillYieldType", &T::FillYieldType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeOutright_NoFills>);
+static_assert(sizeof(ExecutionReportTradeOutright_NoFills) == 15, "ExecutionReportTradeOutright_NoFills block size mismatch");
+
+// group NoOrderEvents of ExecutionReportTradeOutright  (entry blockLength 41)
+#pragma pack(push, 1)
+struct ExecutionReportTradeOutright_NoOrderEvents
+{
+	static constexpr uint16_t BlockLength = 41;
+	ILink3::PRICE9 OrderEventPx;
+	Tools::StringN<5> OrderEventText;
+	uint32_t OrderEventExecID;
+	uint32_t OrderEventQty;
+	ILink3::OrderEventType OrderEventType;
+	uint8_t OrderEventReason;
+	ILink3::Decimal64NULL ContraGrossTradeAmt;
+	ILink3::Decimal64NULL ContraCalculatedCcyLastQty;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeOutright_NoOrderEvents;
+		static constexpr auto value = glz::object("OrderEventPx", &T::OrderEventPx, "OrderEventText", &T::OrderEventText, "OrderEventExecID", &T::OrderEventExecID, "OrderEventQty", &T::OrderEventQty, "OrderEventType", &T::OrderEventType, "OrderEventReason", &T::OrderEventReason, "ContraGrossTradeAmt", &T::ContraGrossTradeAmt, "ContraCalculatedCcyLastQty", &T::ContraCalculatedCcyLastQty); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeOutright_NoOrderEvents>);
+static_assert(sizeof(ExecutionReportTradeOutright_NoOrderEvents) == 41, "ExecutionReportTradeOutright_NoOrderEvents block size mismatch");
+
+// Walks the repeating groups of a ExecutionReportTradeOutright in wire order.
+struct ExecutionReportTradeOutrightGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static ExecutionReportTradeOutrightGroups Of(const ExecutionReportTradeOutright& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<ExecutionReportTradeOutright_NoFills> NoFills() const { return Sbe::GroupReader<ExecutionReportTradeOutright_NoFills>(Root + ExecutionReportTradeOutright::BlockLength); }
+	Sbe::GroupReader<ExecutionReportTradeOutright_NoOrderEvents> NoOrderEvents() const { return Sbe::GroupReader<ExecutionReportTradeOutright_NoOrderEvents>(NoFills().End()); }
+};
+
 // ExecutionReportTradeSpread526  (template 526, blockLength 230, semanticType "8")
-// PHASE 2 trailing after root block: group NoFills, group NoLegs, group NoOrderEvents
+#pragma pack(push, 1)
 struct ExecutionReportTradeSpread
 {
 	static constexpr uint16_t TemplateId = 526;
@@ -1311,11 +1463,75 @@ struct ExecutionReportTradeSpread
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportTradeSpread>);
-static_assert(sizeof(ExecutionReportTradeSpread) == ExecutionReportTradeSpread::BlockLength, "ExecutionReportTradeSpread root block size mismatch");
+static_assert(sizeof(ExecutionReportTradeSpread) == 230, "ExecutionReportTradeSpread block size mismatch");
 
+// group NoFills of ExecutionReportTradeSpread  (entry blockLength 15)
 #pragma pack(push, 1)
+struct ExecutionReportTradeSpread_NoFills
+{
+	static constexpr uint16_t BlockLength = 15;
+	ILink3::PRICE9 FillPx;
+	uint32_t FillQty;
+	Tools::StringN<2> FillExecID;
+	uint8_t FillYieldType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeSpread_NoFills;
+		static constexpr auto value = glz::object("FillPx", &T::FillPx, "FillQty", &T::FillQty, "FillExecID", &T::FillExecID, "FillYieldType", &T::FillYieldType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeSpread_NoFills>);
+static_assert(sizeof(ExecutionReportTradeSpread_NoFills) == 15, "ExecutionReportTradeSpread_NoFills block size mismatch");
+
+// group NoLegs of ExecutionReportTradeSpread  (entry blockLength 29)
+#pragma pack(push, 1)
+struct ExecutionReportTradeSpread_NoLegs
+{
+	static constexpr uint16_t BlockLength = 29;
+	uint64_t LegExecID;
+	ILink3::PRICE9 LegLastPx;
+	int32_t LegSecurityID;
+	uint32_t LegTradeID;
+	uint32_t LegLastQty;
+	ILink3::SideReq LegSide;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeSpread_NoLegs;
+		static constexpr auto value = glz::object("LegExecID", &T::LegExecID, "LegLastPx", &T::LegLastPx, "LegSecurityID", &T::LegSecurityID, "LegTradeID", &T::LegTradeID, "LegLastQty", &T::LegLastQty, "LegSide", &T::LegSide); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeSpread_NoLegs>);
+static_assert(sizeof(ExecutionReportTradeSpread_NoLegs) == 29, "ExecutionReportTradeSpread_NoLegs block size mismatch");
+
+// group NoOrderEvents of ExecutionReportTradeSpread  (entry blockLength 23)
+#pragma pack(push, 1)
+struct ExecutionReportTradeSpread_NoOrderEvents
+{
+	static constexpr uint16_t BlockLength = 23;
+	ILink3::PRICE9 OrderEventPx;
+	Tools::StringN<5> OrderEventText;
+	uint32_t OrderEventExecID;
+	uint32_t OrderEventQty;
+	ILink3::OrderEventType OrderEventType;
+	uint8_t OrderEventReason;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeSpread_NoOrderEvents;
+		static constexpr auto value = glz::object("OrderEventPx", &T::OrderEventPx, "OrderEventText", &T::OrderEventText, "OrderEventExecID", &T::OrderEventExecID, "OrderEventQty", &T::OrderEventQty, "OrderEventType", &T::OrderEventType, "OrderEventReason", &T::OrderEventReason); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeSpread_NoOrderEvents>);
+static_assert(sizeof(ExecutionReportTradeSpread_NoOrderEvents) == 23, "ExecutionReportTradeSpread_NoOrderEvents block size mismatch");
+
+// Walks the repeating groups of a ExecutionReportTradeSpread in wire order.
+struct ExecutionReportTradeSpreadGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static ExecutionReportTradeSpreadGroups Of(const ExecutionReportTradeSpread& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<ExecutionReportTradeSpread_NoFills> NoFills() const { return Sbe::GroupReader<ExecutionReportTradeSpread_NoFills>(Root + ExecutionReportTradeSpread::BlockLength); }
+	Sbe::GroupReader<ExecutionReportTradeSpread_NoLegs> NoLegs() const { return Sbe::GroupReader<ExecutionReportTradeSpread_NoLegs>(NoFills().End()); }
+	Sbe::GroupReader<ExecutionReportTradeSpread_NoOrderEvents> NoOrderEvents() const { return Sbe::GroupReader<ExecutionReportTradeSpread_NoOrderEvents>(NoLegs().End()); }
+};
+
 // ExecutionReportTradeSpreadLeg527  (template 527, blockLength 219, semanticType "8")
-// PHASE 2 trailing after root block: group NoFills, group NoOrderEvents
+#pragma pack(push, 1)
 struct ExecutionReportTradeSpreadLeg
 {
 	static constexpr uint16_t TemplateId = 527;
@@ -1358,11 +1574,57 @@ struct ExecutionReportTradeSpreadLeg
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportTradeSpreadLeg>);
-static_assert(sizeof(ExecutionReportTradeSpreadLeg) == ExecutionReportTradeSpreadLeg::BlockLength, "ExecutionReportTradeSpreadLeg root block size mismatch");
+static_assert(sizeof(ExecutionReportTradeSpreadLeg) == 219, "ExecutionReportTradeSpreadLeg block size mismatch");
 
+// group NoFills of ExecutionReportTradeSpreadLeg  (entry blockLength 15)
 #pragma pack(push, 1)
+struct ExecutionReportTradeSpreadLeg_NoFills
+{
+	static constexpr uint16_t BlockLength = 15;
+	ILink3::PRICE9 FillPx;
+	uint32_t FillQty;
+	Tools::StringN<2> FillExecID;
+	uint8_t FillYieldType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeSpreadLeg_NoFills;
+		static constexpr auto value = glz::object("FillPx", &T::FillPx, "FillQty", &T::FillQty, "FillExecID", &T::FillExecID, "FillYieldType", &T::FillYieldType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeSpreadLeg_NoFills>);
+static_assert(sizeof(ExecutionReportTradeSpreadLeg_NoFills) == 15, "ExecutionReportTradeSpreadLeg_NoFills block size mismatch");
+
+// group NoOrderEvents of ExecutionReportTradeSpreadLeg  (entry blockLength 41)
+#pragma pack(push, 1)
+struct ExecutionReportTradeSpreadLeg_NoOrderEvents
+{
+	static constexpr uint16_t BlockLength = 41;
+	ILink3::PRICE9 OrderEventPx;
+	Tools::StringN<5> OrderEventText;
+	uint32_t OrderEventExecID;
+	uint32_t OrderEventQty;
+	ILink3::OrderEventType OrderEventType;
+	uint8_t OrderEventReason;
+	ILink3::Decimal64NULL ContraGrossTradeAmt;
+	ILink3::Decimal64NULL ContraCalculatedCcyLastQty;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeSpreadLeg_NoOrderEvents;
+		static constexpr auto value = glz::object("OrderEventPx", &T::OrderEventPx, "OrderEventText", &T::OrderEventText, "OrderEventExecID", &T::OrderEventExecID, "OrderEventQty", &T::OrderEventQty, "OrderEventType", &T::OrderEventType, "OrderEventReason", &T::OrderEventReason, "ContraGrossTradeAmt", &T::ContraGrossTradeAmt, "ContraCalculatedCcyLastQty", &T::ContraCalculatedCcyLastQty); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeSpreadLeg_NoOrderEvents>);
+static_assert(sizeof(ExecutionReportTradeSpreadLeg_NoOrderEvents) == 41, "ExecutionReportTradeSpreadLeg_NoOrderEvents block size mismatch");
+
+// Walks the repeating groups of a ExecutionReportTradeSpreadLeg in wire order.
+struct ExecutionReportTradeSpreadLegGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static ExecutionReportTradeSpreadLegGroups Of(const ExecutionReportTradeSpreadLeg& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<ExecutionReportTradeSpreadLeg_NoFills> NoFills() const { return Sbe::GroupReader<ExecutionReportTradeSpreadLeg_NoFills>(Root + ExecutionReportTradeSpreadLeg::BlockLength); }
+	Sbe::GroupReader<ExecutionReportTradeSpreadLeg_NoOrderEvents> NoOrderEvents() const { return Sbe::GroupReader<ExecutionReportTradeSpreadLeg_NoOrderEvents>(NoFills().End()); }
+};
+
 // QuoteCancel528  (template 528, blockLength 61, semanticType "Z")
-// PHASE 2 trailing after root block: group NoQuoteEntries, group NoQuoteSets
+#pragma pack(push, 1)
 struct QuoteCancel
 {
 	static constexpr uint16_t TemplateId = 528;
@@ -1386,10 +1648,50 @@ struct QuoteCancel
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<QuoteCancel>);
-static_assert(sizeof(QuoteCancel) == QuoteCancel::BlockLength, "QuoteCancel root block size mismatch");
+static_assert(sizeof(QuoteCancel) == 61, "QuoteCancel block size mismatch");
 
+// group NoQuoteEntries of QuoteCancel  (entry blockLength 10)
 #pragma pack(push, 1)
+struct QuoteCancel_NoQuoteEntries
+{
+	static constexpr uint16_t BlockLength = 10;
+	Tools::StringN<6> SecurityGroup;
+	int32_t SecurityID;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = QuoteCancel_NoQuoteEntries;
+		static constexpr auto value = glz::object("SecurityGroup", &T::SecurityGroup, "SecurityID", &T::SecurityID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<QuoteCancel_NoQuoteEntries>);
+static_assert(sizeof(QuoteCancel_NoQuoteEntries) == 10, "QuoteCancel_NoQuoteEntries block size mismatch");
+
+// group NoQuoteSets of QuoteCancel  (entry blockLength 10)
+#pragma pack(push, 1)
+struct QuoteCancel_NoQuoteSets
+{
+	static constexpr uint16_t BlockLength = 10;
+	uint32_t BidSize;
+	uint32_t OfferSize;
+	uint16_t QuoteSetID;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = QuoteCancel_NoQuoteSets;
+		static constexpr auto value = glz::object("BidSize", &T::BidSize, "OfferSize", &T::OfferSize, "QuoteSetID", &T::QuoteSetID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<QuoteCancel_NoQuoteSets>);
+static_assert(sizeof(QuoteCancel_NoQuoteSets) == 10, "QuoteCancel_NoQuoteSets block size mismatch");
+
+// Walks the repeating groups of a QuoteCancel in wire order.
+struct QuoteCancelGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static QuoteCancelGroups Of(const QuoteCancel& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<QuoteCancel_NoQuoteEntries> NoQuoteEntries() const { return Sbe::GroupReader<QuoteCancel_NoQuoteEntries>(Root + QuoteCancel::BlockLength); }
+	Sbe::GroupReader<QuoteCancel_NoQuoteSets> NoQuoteSets() const { return Sbe::GroupReader<QuoteCancel_NoQuoteSets>(NoQuoteEntries().End()); }
+};
+
 // OrderMassActionRequest529  (template 529, blockLength 79, semanticType "CA")
+#pragma pack(push, 1)
 struct OrderMassActionRequest
 {
 	static constexpr uint16_t TemplateId = 529;
@@ -1420,10 +1722,10 @@ struct OrderMassActionRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<OrderMassActionRequest>);
-static_assert(sizeof(OrderMassActionRequest) == OrderMassActionRequest::BlockLength, "OrderMassActionRequest root block size mismatch");
+static_assert(sizeof(OrderMassActionRequest) == 79, "OrderMassActionRequest block size mismatch");
 
-#pragma pack(push, 1)
 // OrderMassStatusRequest530  (template 530, blockLength 68, semanticType "AF")
+#pragma pack(push, 1)
 struct OrderMassStatusRequest
 {
 	static constexpr uint16_t TemplateId = 530;
@@ -1449,10 +1751,10 @@ struct OrderMassStatusRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<OrderMassStatusRequest>);
-static_assert(sizeof(OrderMassStatusRequest) == OrderMassStatusRequest::BlockLength, "OrderMassStatusRequest root block size mismatch");
+static_assert(sizeof(OrderMassStatusRequest) == 68, "OrderMassStatusRequest block size mismatch");
 
-#pragma pack(push, 1)
 // ExecutionReportModify531  (template 531, blockLength 226, semanticType "8")
+#pragma pack(push, 1)
 struct ExecutionReportModify
 {
 	static constexpr uint16_t TemplateId = 531;
@@ -1505,10 +1807,10 @@ struct ExecutionReportModify
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportModify>);
-static_assert(sizeof(ExecutionReportModify) == ExecutionReportModify::BlockLength, "ExecutionReportModify root block size mismatch");
+static_assert(sizeof(ExecutionReportModify) == 226, "ExecutionReportModify block size mismatch");
 
-#pragma pack(push, 1)
 // ExecutionReportStatus532  (template 532, blockLength 513, semanticType "8")
+#pragma pack(push, 1)
 struct ExecutionReportStatus
 {
 	static constexpr uint16_t TemplateId = 532;
@@ -1565,10 +1867,10 @@ struct ExecutionReportStatus
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportStatus>);
-static_assert(sizeof(ExecutionReportStatus) == ExecutionReportStatus::BlockLength, "ExecutionReportStatus root block size mismatch");
+static_assert(sizeof(ExecutionReportStatus) == 513, "ExecutionReportStatus block size mismatch");
 
-#pragma pack(push, 1)
 // OrderStatusRequest533  (template 533, blockLength 62, semanticType "H")
+#pragma pack(push, 1)
 struct OrderStatusRequest
 {
 	static constexpr uint16_t TemplateId = 533;
@@ -1589,10 +1891,10 @@ struct OrderStatusRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<OrderStatusRequest>);
-static_assert(sizeof(OrderStatusRequest) == OrderStatusRequest::BlockLength, "OrderStatusRequest root block size mismatch");
+static_assert(sizeof(OrderStatusRequest) == 62, "OrderStatusRequest block size mismatch");
 
-#pragma pack(push, 1)
 // ExecutionReportCancel534  (template 534, blockLength 247, semanticType "8")
+#pragma pack(push, 1)
 struct ExecutionReportCancel
 {
 	static constexpr uint16_t TemplateId = 534;
@@ -1648,10 +1950,10 @@ struct ExecutionReportCancel
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportCancel>);
-static_assert(sizeof(ExecutionReportCancel) == ExecutionReportCancel::BlockLength, "ExecutionReportCancel root block size mismatch");
+static_assert(sizeof(ExecutionReportCancel) == 247, "ExecutionReportCancel block size mismatch");
 
-#pragma pack(push, 1)
 // OrderCancelReject535  (template 535, blockLength 409, semanticType "9")
+#pragma pack(push, 1)
 struct OrderCancelReject
 {
 	static constexpr uint16_t TemplateId = 535;
@@ -1685,10 +1987,10 @@ struct OrderCancelReject
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<OrderCancelReject>);
-static_assert(sizeof(OrderCancelReject) == OrderCancelReject::BlockLength, "OrderCancelReject root block size mismatch");
+static_assert(sizeof(OrderCancelReject) == 409, "OrderCancelReject block size mismatch");
 
-#pragma pack(push, 1)
 // OrderCancelReplaceReject536  (template 536, blockLength 409, semanticType "9")
+#pragma pack(push, 1)
 struct OrderCancelReplaceReject
 {
 	static constexpr uint16_t TemplateId = 536;
@@ -1722,11 +2024,10 @@ struct OrderCancelReplaceReject
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<OrderCancelReplaceReject>);
-static_assert(sizeof(OrderCancelReplaceReject) == OrderCancelReplaceReject::BlockLength, "OrderCancelReplaceReject root block size mismatch");
+static_assert(sizeof(OrderCancelReplaceReject) == 409, "OrderCancelReplaceReject block size mismatch");
 
-#pragma pack(push, 1)
 // PartyDetailsListRequest537  (template 537, blockLength 20, semanticType "CF")
-// PHASE 2 trailing after root block: group NoRequestingPartyIDs, group NoPartyIDs
+#pragma pack(push, 1)
 struct PartyDetailsListRequest
 {
 	static constexpr uint16_t TemplateId = 537;
@@ -1742,11 +2043,51 @@ struct PartyDetailsListRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<PartyDetailsListRequest>);
-static_assert(sizeof(PartyDetailsListRequest) == PartyDetailsListRequest::BlockLength, "PartyDetailsListRequest root block size mismatch");
+static_assert(sizeof(PartyDetailsListRequest) == 20, "PartyDetailsListRequest block size mismatch");
 
+// group NoRequestingPartyIDs of PartyDetailsListRequest  (entry blockLength 7)
 #pragma pack(push, 1)
+struct PartyDetailsListRequest_NoRequestingPartyIDs
+{
+	static constexpr uint16_t BlockLength = 7;
+	Tools::StringN<5> RequestingPartyID;
+	char RequestingPartyIDSource;
+	char RequestingPartyRole;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = PartyDetailsListRequest_NoRequestingPartyIDs;
+		static constexpr auto value = glz::object("RequestingPartyID", &T::RequestingPartyID, "RequestingPartyIDSource", &T::RequestingPartyIDSource, "RequestingPartyRole", &T::RequestingPartyRole); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<PartyDetailsListRequest_NoRequestingPartyIDs>);
+static_assert(sizeof(PartyDetailsListRequest_NoRequestingPartyIDs) == 7, "PartyDetailsListRequest_NoRequestingPartyIDs block size mismatch");
+
+// group NoPartyIDs of PartyDetailsListRequest  (entry blockLength 11)
+#pragma pack(push, 1)
+struct PartyDetailsListRequest_NoPartyIDs
+{
+	static constexpr uint16_t BlockLength = 11;
+	uint64_t PartyID;
+	char PartyIDSource;
+	uint16_t PartyRole;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = PartyDetailsListRequest_NoPartyIDs;
+		static constexpr auto value = glz::object("PartyID", &T::PartyID, "PartyIDSource", &T::PartyIDSource, "PartyRole", &T::PartyRole); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<PartyDetailsListRequest_NoPartyIDs>);
+static_assert(sizeof(PartyDetailsListRequest_NoPartyIDs) == 11, "PartyDetailsListRequest_NoPartyIDs block size mismatch");
+
+// Walks the repeating groups of a PartyDetailsListRequest in wire order.
+struct PartyDetailsListRequestGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static PartyDetailsListRequestGroups Of(const PartyDetailsListRequest& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<PartyDetailsListRequest_NoRequestingPartyIDs> NoRequestingPartyIDs() const { return Sbe::GroupReader<PartyDetailsListRequest_NoRequestingPartyIDs>(Root + PartyDetailsListRequest::BlockLength); }
+	Sbe::GroupReader<PartyDetailsListRequest_NoPartyIDs> NoPartyIDs() const { return Sbe::GroupReader<PartyDetailsListRequest_NoPartyIDs>(NoRequestingPartyIDs().End()); }
+};
+
 // PartyDetailsListReport538  (template 538, blockLength 93, semanticType "CG")
-// PHASE 2 trailing after root block: group NoPartyDetails, group NoTrdRegPublications
+#pragma pack(push, 1)
 struct PartyDetailsListReport
 {
 	static constexpr uint16_t TemplateId = 538;
@@ -1780,10 +2121,50 @@ struct PartyDetailsListReport
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<PartyDetailsListReport>);
-static_assert(sizeof(PartyDetailsListReport) == PartyDetailsListReport::BlockLength, "PartyDetailsListReport root block size mismatch");
+static_assert(sizeof(PartyDetailsListReport) == 93, "PartyDetailsListReport block size mismatch");
 
+// group NoPartyDetails of PartyDetailsListReport  (entry blockLength 22)
 #pragma pack(push, 1)
+struct PartyDetailsListReport_NoPartyDetails
+{
+	static constexpr uint16_t BlockLength = 22;
+	Tools::StringN<20> PartyDetailID;
+	ILink3::PartyDetailRole PartyDetailRole;
+	static constexpr char PartyDetailIDSource = 'C';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = PartyDetailsListReport_NoPartyDetails;
+		static constexpr auto value = glz::object("PartyDetailID", &T::PartyDetailID, "PartyDetailRole", &T::PartyDetailRole); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<PartyDetailsListReport_NoPartyDetails>);
+static_assert(sizeof(PartyDetailsListReport_NoPartyDetails) == 22, "PartyDetailsListReport_NoPartyDetails block size mismatch");
+
+// group NoTrdRegPublications of PartyDetailsListReport  (entry blockLength 2)
+#pragma pack(push, 1)
+struct PartyDetailsListReport_NoTrdRegPublications
+{
+	static constexpr uint16_t BlockLength = 2;
+	uint8_t TrdRegPublicationType;
+	uint8_t TrdRegPublicationReason;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = PartyDetailsListReport_NoTrdRegPublications;
+		static constexpr auto value = glz::object("TrdRegPublicationType", &T::TrdRegPublicationType, "TrdRegPublicationReason", &T::TrdRegPublicationReason); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<PartyDetailsListReport_NoTrdRegPublications>);
+static_assert(sizeof(PartyDetailsListReport_NoTrdRegPublications) == 2, "PartyDetailsListReport_NoTrdRegPublications block size mismatch");
+
+// Walks the repeating groups of a PartyDetailsListReport in wire order.
+struct PartyDetailsListReportGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static PartyDetailsListReportGroups Of(const PartyDetailsListReport& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<PartyDetailsListReport_NoPartyDetails> NoPartyDetails() const { return Sbe::GroupReader<PartyDetailsListReport_NoPartyDetails>(Root + PartyDetailsListReport::BlockLength); }
+	Sbe::GroupReader<PartyDetailsListReport_NoTrdRegPublications> NoTrdRegPublications() const { return Sbe::GroupReader<PartyDetailsListReport_NoTrdRegPublications>(NoPartyDetails().End()); }
+};
+
 // ExecutionAck539  (template 539, blockLength 101, semanticType "BN")
+#pragma pack(push, 1)
 struct ExecutionAck
 {
 	static constexpr uint16_t TemplateId = 539;
@@ -1811,11 +2192,10 @@ struct ExecutionAck
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionAck>);
-static_assert(sizeof(ExecutionAck) == ExecutionAck::BlockLength, "ExecutionAck root block size mismatch");
+static_assert(sizeof(ExecutionAck) == 101, "ExecutionAck block size mismatch");
 
-#pragma pack(push, 1)
 // RequestForQuote543  (template 543, blockLength 55, semanticType "R")
-// PHASE 2 trailing after root block: group NoRelatedSym
+#pragma pack(push, 1)
 struct RequestForQuote
 {
 	static constexpr uint16_t TemplateId = 543;
@@ -1836,11 +2216,34 @@ struct RequestForQuote
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<RequestForQuote>);
-static_assert(sizeof(RequestForQuote) == RequestForQuote::BlockLength, "RequestForQuote root block size mismatch");
+static_assert(sizeof(RequestForQuote) == 55, "RequestForQuote block size mismatch");
 
+// group NoRelatedSym of RequestForQuote  (entry blockLength 9)
 #pragma pack(push, 1)
+struct RequestForQuote_NoRelatedSym
+{
+	static constexpr uint16_t BlockLength = 9;
+	int32_t SecurityID;
+	uint32_t OrderQty;
+	ILink3::RFQSide Side;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = RequestForQuote_NoRelatedSym;
+		static constexpr auto value = glz::object("SecurityID", &T::SecurityID, "OrderQty", &T::OrderQty, "Side", &T::Side); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<RequestForQuote_NoRelatedSym>);
+static_assert(sizeof(RequestForQuote_NoRelatedSym) == 9, "RequestForQuote_NoRelatedSym block size mismatch");
+
+// Walks the repeating groups of a RequestForQuote in wire order.
+struct RequestForQuoteGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static RequestForQuoteGroups Of(const RequestForQuote& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<RequestForQuote_NoRelatedSym> NoRelatedSym() const { return Sbe::GroupReader<RequestForQuote_NoRelatedSym>(Root + RequestForQuote::BlockLength); }
+};
+
 // NewOrderCross544  (template 544, blockLength 74, semanticType "s")
-// PHASE 2 trailing after root block: group NoSides
+#pragma pack(push, 1)
 struct NewOrderCross
 {
 	static constexpr uint16_t TemplateId = 544;
@@ -1866,11 +2269,36 @@ struct NewOrderCross
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<NewOrderCross>);
-static_assert(sizeof(NewOrderCross) == NewOrderCross::BlockLength, "NewOrderCross root block size mismatch");
+static_assert(sizeof(NewOrderCross) == 74, "NewOrderCross block size mismatch");
 
+// group NoSides of NewOrderCross  (entry blockLength 34)
 #pragma pack(push, 1)
+struct NewOrderCross_NoSides
+{
+	static constexpr uint16_t BlockLength = 34;
+	Tools::StringN<20> ClOrdID;
+	uint64_t PartyDetailsListReqID;
+	uint32_t OrderQty;
+	ILink3::SideReq Side;
+	ILink3::SideTimeInForce SideTimeInForce;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = NewOrderCross_NoSides;
+		static constexpr auto value = glz::object("ClOrdID", &T::ClOrdID, "PartyDetailsListReqID", &T::PartyDetailsListReqID, "OrderQty", &T::OrderQty, "Side", &T::Side, "SideTimeInForce", &T::SideTimeInForce); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<NewOrderCross_NoSides>);
+static_assert(sizeof(NewOrderCross_NoSides) == 34, "NewOrderCross_NoSides block size mismatch");
+
+// Walks the repeating groups of a NewOrderCross in wire order.
+struct NewOrderCrossGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static NewOrderCrossGroups Of(const NewOrderCross& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<NewOrderCross_NoSides> NoSides() const { return Sbe::GroupReader<NewOrderCross_NoSides>(Root + NewOrderCross::BlockLength); }
+};
+
 // MassQuoteAck545  (template 545, blockLength 352, semanticType "b")
-// PHASE 2 trailing after root block: group NoQuoteEntries
+#pragma pack(push, 1)
 struct MassQuoteAck
 {
 	static constexpr uint16_t TemplateId = 545;
@@ -1907,10 +2335,35 @@ struct MassQuoteAck
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MassQuoteAck>);
-static_assert(sizeof(MassQuoteAck) == MassQuoteAck::BlockLength, "MassQuoteAck root block size mismatch");
+static_assert(sizeof(MassQuoteAck) == 352, "MassQuoteAck block size mismatch");
 
+// group NoQuoteEntries of MassQuoteAck  (entry blockLength 11)
 #pragma pack(push, 1)
+struct MassQuoteAck_NoQuoteEntries
+{
+	static constexpr uint16_t BlockLength = 11;
+	uint32_t QuoteEntryID;
+	int32_t SecurityID;
+	uint16_t QuoteSetID;
+	uint8_t QuoteEntryRejectReason;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MassQuoteAck_NoQuoteEntries;
+		static constexpr auto value = glz::object("QuoteEntryID", &T::QuoteEntryID, "SecurityID", &T::SecurityID, "QuoteSetID", &T::QuoteSetID, "QuoteEntryRejectReason", &T::QuoteEntryRejectReason); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MassQuoteAck_NoQuoteEntries>);
+static_assert(sizeof(MassQuoteAck_NoQuoteEntries) == 11, "MassQuoteAck_NoQuoteEntries block size mismatch");
+
+// Walks the repeating groups of a MassQuoteAck in wire order.
+struct MassQuoteAckGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MassQuoteAckGroups Of(const MassQuoteAck& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MassQuoteAck_NoQuoteEntries> NoQuoteEntries() const { return Sbe::GroupReader<MassQuoteAck_NoQuoteEntries>(Root + MassQuoteAck::BlockLength); }
+};
+
 // RequestForQuoteAck546  (template 546, blockLength 358, semanticType "b")
+#pragma pack(push, 1)
 struct RequestForQuoteAck
 {
 	static constexpr uint16_t TemplateId = 546;
@@ -1940,11 +2393,10 @@ struct RequestForQuoteAck
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<RequestForQuoteAck>);
-static_assert(sizeof(RequestForQuoteAck) == RequestForQuoteAck::BlockLength, "RequestForQuoteAck root block size mismatch");
+static_assert(sizeof(RequestForQuoteAck) == 358, "RequestForQuoteAck block size mismatch");
 
-#pragma pack(push, 1)
 // ExecutionReportTradeAddendumOutright548  (template 548, blockLength 266, semanticType "8")
-// PHASE 2 trailing after root block: group NoFills, group NoOrderEvents
+#pragma pack(push, 1)
 struct ExecutionReportTradeAddendumOutright
 {
 	static constexpr uint16_t TemplateId = 548;
@@ -1995,11 +2447,58 @@ struct ExecutionReportTradeAddendumOutright
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumOutright>);
-static_assert(sizeof(ExecutionReportTradeAddendumOutright) == ExecutionReportTradeAddendumOutright::BlockLength, "ExecutionReportTradeAddendumOutright root block size mismatch");
+static_assert(sizeof(ExecutionReportTradeAddendumOutright) == 266, "ExecutionReportTradeAddendumOutright block size mismatch");
 
+// group NoFills of ExecutionReportTradeAddendumOutright  (entry blockLength 15)
 #pragma pack(push, 1)
+struct ExecutionReportTradeAddendumOutright_NoFills
+{
+	static constexpr uint16_t BlockLength = 15;
+	ILink3::PRICE9 FillPx;
+	uint32_t FillQty;
+	Tools::StringN<2> FillExecID;
+	uint8_t FillYieldType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeAddendumOutright_NoFills;
+		static constexpr auto value = glz::object("FillPx", &T::FillPx, "FillQty", &T::FillQty, "FillExecID", &T::FillExecID, "FillYieldType", &T::FillYieldType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumOutright_NoFills>);
+static_assert(sizeof(ExecutionReportTradeAddendumOutright_NoFills) == 15, "ExecutionReportTradeAddendumOutright_NoFills block size mismatch");
+
+// group NoOrderEvents of ExecutionReportTradeAddendumOutright  (entry blockLength 45)
+#pragma pack(push, 1)
+struct ExecutionReportTradeAddendumOutright_NoOrderEvents
+{
+	static constexpr uint16_t BlockLength = 45;
+	ILink3::PRICE9 OrderEventPx;
+	Tools::StringN<5> OrderEventText;
+	uint32_t OrderEventExecID;
+	uint32_t OrderEventQty;
+	ILink3::TradeAddendum OrderEventType;
+	uint8_t OrderEventReason;
+	uint32_t OriginalOrderEventExecID;
+	ILink3::Decimal64NULL ContraGrossTradeAmt;
+	ILink3::Decimal64NULL ContraCalculatedCcyLastQty;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeAddendumOutright_NoOrderEvents;
+		static constexpr auto value = glz::object("OrderEventPx", &T::OrderEventPx, "OrderEventText", &T::OrderEventText, "OrderEventExecID", &T::OrderEventExecID, "OrderEventQty", &T::OrderEventQty, "OrderEventType", &T::OrderEventType, "OrderEventReason", &T::OrderEventReason, "OriginalOrderEventExecID", &T::OriginalOrderEventExecID, "ContraGrossTradeAmt", &T::ContraGrossTradeAmt, "ContraCalculatedCcyLastQty", &T::ContraCalculatedCcyLastQty); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumOutright_NoOrderEvents>);
+static_assert(sizeof(ExecutionReportTradeAddendumOutright_NoOrderEvents) == 45, "ExecutionReportTradeAddendumOutright_NoOrderEvents block size mismatch");
+
+// Walks the repeating groups of a ExecutionReportTradeAddendumOutright in wire order.
+struct ExecutionReportTradeAddendumOutrightGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static ExecutionReportTradeAddendumOutrightGroups Of(const ExecutionReportTradeAddendumOutright& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<ExecutionReportTradeAddendumOutright_NoFills> NoFills() const { return Sbe::GroupReader<ExecutionReportTradeAddendumOutright_NoFills>(Root + ExecutionReportTradeAddendumOutright::BlockLength); }
+	Sbe::GroupReader<ExecutionReportTradeAddendumOutright_NoOrderEvents> NoOrderEvents() const { return Sbe::GroupReader<ExecutionReportTradeAddendumOutright_NoOrderEvents>(NoFills().End()); }
+};
+
 // ExecutionReportTradeAddendumSpread549  (template 549, blockLength 227, semanticType "8")
-// PHASE 2 trailing after root block: group NoFills, group NoLegs, group NoOrderEvents
+#pragma pack(push, 1)
 struct ExecutionReportTradeAddendumSpread
 {
 	static constexpr uint16_t TemplateId = 549;
@@ -2044,11 +2543,78 @@ struct ExecutionReportTradeAddendumSpread
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumSpread>);
-static_assert(sizeof(ExecutionReportTradeAddendumSpread) == ExecutionReportTradeAddendumSpread::BlockLength, "ExecutionReportTradeAddendumSpread root block size mismatch");
+static_assert(sizeof(ExecutionReportTradeAddendumSpread) == 227, "ExecutionReportTradeAddendumSpread block size mismatch");
 
+// group NoFills of ExecutionReportTradeAddendumSpread  (entry blockLength 15)
 #pragma pack(push, 1)
+struct ExecutionReportTradeAddendumSpread_NoFills
+{
+	static constexpr uint16_t BlockLength = 15;
+	ILink3::PRICE9 FillPx;
+	uint32_t FillQty;
+	Tools::StringN<2> FillExecID;
+	uint8_t FillYieldType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeAddendumSpread_NoFills;
+		static constexpr auto value = glz::object("FillPx", &T::FillPx, "FillQty", &T::FillQty, "FillExecID", &T::FillExecID, "FillYieldType", &T::FillYieldType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumSpread_NoFills>);
+static_assert(sizeof(ExecutionReportTradeAddendumSpread_NoFills) == 15, "ExecutionReportTradeAddendumSpread_NoFills block size mismatch");
+
+// group NoLegs of ExecutionReportTradeAddendumSpread  (entry blockLength 41)
+#pragma pack(push, 1)
+struct ExecutionReportTradeAddendumSpread_NoLegs
+{
+	static constexpr uint16_t BlockLength = 41;
+	uint64_t LegExecID;
+	ILink3::PRICE9 LegLastPx;
+	uint64_t LegExecRefID;
+	uint32_t LegTradeID;
+	uint32_t LegTradeRefID;
+	int32_t LegSecurityID;
+	uint32_t LegLastQty;
+	ILink3::SideReq LegSide;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeAddendumSpread_NoLegs;
+		static constexpr auto value = glz::object("LegExecID", &T::LegExecID, "LegLastPx", &T::LegLastPx, "LegExecRefID", &T::LegExecRefID, "LegTradeID", &T::LegTradeID, "LegTradeRefID", &T::LegTradeRefID, "LegSecurityID", &T::LegSecurityID, "LegLastQty", &T::LegLastQty, "LegSide", &T::LegSide); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumSpread_NoLegs>);
+static_assert(sizeof(ExecutionReportTradeAddendumSpread_NoLegs) == 41, "ExecutionReportTradeAddendumSpread_NoLegs block size mismatch");
+
+// group NoOrderEvents of ExecutionReportTradeAddendumSpread  (entry blockLength 27)
+#pragma pack(push, 1)
+struct ExecutionReportTradeAddendumSpread_NoOrderEvents
+{
+	static constexpr uint16_t BlockLength = 27;
+	ILink3::PRICE9 OrderEventPx;
+	Tools::StringN<5> OrderEventText;
+	uint32_t OrderEventExecID;
+	uint32_t OrderEventQty;
+	ILink3::TradeAddendum OrderEventType;
+	uint8_t OrderEventReason;
+	uint32_t OriginalOrderEventExecID;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeAddendumSpread_NoOrderEvents;
+		static constexpr auto value = glz::object("OrderEventPx", &T::OrderEventPx, "OrderEventText", &T::OrderEventText, "OrderEventExecID", &T::OrderEventExecID, "OrderEventQty", &T::OrderEventQty, "OrderEventType", &T::OrderEventType, "OrderEventReason", &T::OrderEventReason, "OriginalOrderEventExecID", &T::OriginalOrderEventExecID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumSpread_NoOrderEvents>);
+static_assert(sizeof(ExecutionReportTradeAddendumSpread_NoOrderEvents) == 27, "ExecutionReportTradeAddendumSpread_NoOrderEvents block size mismatch");
+
+// Walks the repeating groups of a ExecutionReportTradeAddendumSpread in wire order.
+struct ExecutionReportTradeAddendumSpreadGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static ExecutionReportTradeAddendumSpreadGroups Of(const ExecutionReportTradeAddendumSpread& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<ExecutionReportTradeAddendumSpread_NoFills> NoFills() const { return Sbe::GroupReader<ExecutionReportTradeAddendumSpread_NoFills>(Root + ExecutionReportTradeAddendumSpread::BlockLength); }
+	Sbe::GroupReader<ExecutionReportTradeAddendumSpread_NoLegs> NoLegs() const { return Sbe::GroupReader<ExecutionReportTradeAddendumSpread_NoLegs>(NoFills().End()); }
+	Sbe::GroupReader<ExecutionReportTradeAddendumSpread_NoOrderEvents> NoOrderEvents() const { return Sbe::GroupReader<ExecutionReportTradeAddendumSpread_NoOrderEvents>(NoLegs().End()); }
+};
+
 // ExecutionReportTradeAddendumSpreadLeg550  (template 550, blockLength 236, semanticType "8")
-// PHASE 2 trailing after root block: group NoFills, group NoOrderEvents
+#pragma pack(push, 1)
 struct ExecutionReportTradeAddendumSpreadLeg
 {
 	static constexpr uint16_t TemplateId = 550;
@@ -2088,11 +2654,58 @@ struct ExecutionReportTradeAddendumSpreadLeg
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumSpreadLeg>);
-static_assert(sizeof(ExecutionReportTradeAddendumSpreadLeg) == ExecutionReportTradeAddendumSpreadLeg::BlockLength, "ExecutionReportTradeAddendumSpreadLeg root block size mismatch");
+static_assert(sizeof(ExecutionReportTradeAddendumSpreadLeg) == 236, "ExecutionReportTradeAddendumSpreadLeg block size mismatch");
 
+// group NoFills of ExecutionReportTradeAddendumSpreadLeg  (entry blockLength 15)
 #pragma pack(push, 1)
+struct ExecutionReportTradeAddendumSpreadLeg_NoFills
+{
+	static constexpr uint16_t BlockLength = 15;
+	ILink3::PRICE9 FillPx;
+	uint32_t FillQty;
+	Tools::StringN<2> FillExecID;
+	uint8_t FillYieldType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeAddendumSpreadLeg_NoFills;
+		static constexpr auto value = glz::object("FillPx", &T::FillPx, "FillQty", &T::FillQty, "FillExecID", &T::FillExecID, "FillYieldType", &T::FillYieldType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumSpreadLeg_NoFills>);
+static_assert(sizeof(ExecutionReportTradeAddendumSpreadLeg_NoFills) == 15, "ExecutionReportTradeAddendumSpreadLeg_NoFills block size mismatch");
+
+// group NoOrderEvents of ExecutionReportTradeAddendumSpreadLeg  (entry blockLength 45)
+#pragma pack(push, 1)
+struct ExecutionReportTradeAddendumSpreadLeg_NoOrderEvents
+{
+	static constexpr uint16_t BlockLength = 45;
+	ILink3::PRICE9 OrderEventPx;
+	Tools::StringN<5> OrderEventText;
+	uint32_t OrderEventExecID;
+	uint32_t OrderEventQty;
+	ILink3::TradeAddendum OrderEventType;
+	uint8_t OrderEventReason;
+	uint32_t OriginalOrderEventExecID;
+	ILink3::Decimal64NULL ContraGrossTradeAmt;
+	ILink3::Decimal64NULL ContraCalculatedCcyLastQty;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ExecutionReportTradeAddendumSpreadLeg_NoOrderEvents;
+		static constexpr auto value = glz::object("OrderEventPx", &T::OrderEventPx, "OrderEventText", &T::OrderEventText, "OrderEventExecID", &T::OrderEventExecID, "OrderEventQty", &T::OrderEventQty, "OrderEventType", &T::OrderEventType, "OrderEventReason", &T::OrderEventReason, "OriginalOrderEventExecID", &T::OriginalOrderEventExecID, "ContraGrossTradeAmt", &T::ContraGrossTradeAmt, "ContraCalculatedCcyLastQty", &T::ContraCalculatedCcyLastQty); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ExecutionReportTradeAddendumSpreadLeg_NoOrderEvents>);
+static_assert(sizeof(ExecutionReportTradeAddendumSpreadLeg_NoOrderEvents) == 45, "ExecutionReportTradeAddendumSpreadLeg_NoOrderEvents block size mismatch");
+
+// Walks the repeating groups of a ExecutionReportTradeAddendumSpreadLeg in wire order.
+struct ExecutionReportTradeAddendumSpreadLegGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static ExecutionReportTradeAddendumSpreadLegGroups Of(const ExecutionReportTradeAddendumSpreadLeg& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<ExecutionReportTradeAddendumSpreadLeg_NoFills> NoFills() const { return Sbe::GroupReader<ExecutionReportTradeAddendumSpreadLeg_NoFills>(Root + ExecutionReportTradeAddendumSpreadLeg::BlockLength); }
+	Sbe::GroupReader<ExecutionReportTradeAddendumSpreadLeg_NoOrderEvents> NoOrderEvents() const { return Sbe::GroupReader<ExecutionReportTradeAddendumSpreadLeg_NoOrderEvents>(NoFills().End()); }
+};
+
 // SecurityDefinitionRequest560  (template 560, blockLength 72, semanticType "c")
-// PHASE 2 trailing after root block: group NoLegs, group NoBrokenDates
+#pragma pack(push, 1)
 struct SecurityDefinitionRequest
 {
 	static constexpr uint16_t TemplateId = 560;
@@ -2119,11 +2732,53 @@ struct SecurityDefinitionRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SecurityDefinitionRequest>);
-static_assert(sizeof(SecurityDefinitionRequest) == SecurityDefinitionRequest::BlockLength, "SecurityDefinitionRequest root block size mismatch");
+static_assert(sizeof(SecurityDefinitionRequest) == 72, "SecurityDefinitionRequest block size mismatch");
 
+// group NoLegs of SecurityDefinitionRequest  (entry blockLength 19)
 #pragma pack(push, 1)
+struct SecurityDefinitionRequest_NoLegs
+{
+	static constexpr uint16_t BlockLength = 19;
+	ILink3::PRICENULL9 LegPrice;
+	int32_t LegSecurityID;
+	ILink3::Decimal32NULL LegOptionDelta;
+	ILink3::SideReq LegSide;
+	uint8_t LegRatioQty;
+	static constexpr char LegSecurityIDSource = '8';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SecurityDefinitionRequest_NoLegs;
+		static constexpr auto value = glz::object("LegPrice", &T::LegPrice, "LegSecurityID", &T::LegSecurityID, "LegOptionDelta", &T::LegOptionDelta, "LegSide", &T::LegSide, "LegRatioQty", &T::LegRatioQty); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SecurityDefinitionRequest_NoLegs>);
+static_assert(sizeof(SecurityDefinitionRequest_NoLegs) == 19, "SecurityDefinitionRequest_NoLegs block size mismatch");
+
+// group NoBrokenDates of SecurityDefinitionRequest  (entry blockLength 4)
+#pragma pack(push, 1)
+struct SecurityDefinitionRequest_NoBrokenDates
+{
+	static constexpr uint16_t BlockLength = 4;
+	uint16_t BrokenDateStart;
+	uint16_t BrokenDateEnd;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SecurityDefinitionRequest_NoBrokenDates;
+		static constexpr auto value = glz::object("BrokenDateStart", &T::BrokenDateStart, "BrokenDateEnd", &T::BrokenDateEnd); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SecurityDefinitionRequest_NoBrokenDates>);
+static_assert(sizeof(SecurityDefinitionRequest_NoBrokenDates) == 4, "SecurityDefinitionRequest_NoBrokenDates block size mismatch");
+
+// Walks the repeating groups of a SecurityDefinitionRequest in wire order.
+struct SecurityDefinitionRequestGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static SecurityDefinitionRequestGroups Of(const SecurityDefinitionRequest& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<SecurityDefinitionRequest_NoLegs> NoLegs() const { return Sbe::GroupReader<SecurityDefinitionRequest_NoLegs>(Root + SecurityDefinitionRequest::BlockLength); }
+	Sbe::GroupReader<SecurityDefinitionRequest_NoBrokenDates> NoBrokenDates() const { return Sbe::GroupReader<SecurityDefinitionRequest_NoBrokenDates>(NoLegs().End()); }
+};
+
 // SecurityDefinitionResponse561  (template 561, blockLength 430, semanticType "d")
-// PHASE 2 trailing after root block: group NoLegs, group NoBrokenDates
+#pragma pack(push, 1)
 struct SecurityDefinitionResponse
 {
 	static constexpr uint16_t TemplateId = 561;
@@ -2167,11 +2822,55 @@ struct SecurityDefinitionResponse
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SecurityDefinitionResponse>);
-static_assert(sizeof(SecurityDefinitionResponse) == SecurityDefinitionResponse::BlockLength, "SecurityDefinitionResponse root block size mismatch");
+static_assert(sizeof(SecurityDefinitionResponse) == 430, "SecurityDefinitionResponse block size mismatch");
 
+// group NoLegs of SecurityDefinitionResponse  (entry blockLength 19)
 #pragma pack(push, 1)
+struct SecurityDefinitionResponse_NoLegs
+{
+	static constexpr uint16_t BlockLength = 19;
+	ILink3::PRICENULL9 LegPrice;
+	ILink3::Decimal32NULL LegOptionDelta;
+	int32_t LegSecurityID;
+	ILink3::SideReq LegSide;
+	uint8_t LegRatioQty;
+	static constexpr char LegSecurityIDSource = '8';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SecurityDefinitionResponse_NoLegs;
+		static constexpr auto value = glz::object("LegPrice", &T::LegPrice, "LegOptionDelta", &T::LegOptionDelta, "LegSecurityID", &T::LegSecurityID, "LegSide", &T::LegSide, "LegRatioQty", &T::LegRatioQty); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SecurityDefinitionResponse_NoLegs>);
+static_assert(sizeof(SecurityDefinitionResponse_NoLegs) == 19, "SecurityDefinitionResponse_NoLegs block size mismatch");
+
+// group NoBrokenDates of SecurityDefinitionResponse  (entry blockLength 16)
+#pragma pack(push, 1)
+struct SecurityDefinitionResponse_NoBrokenDates
+{
+	static constexpr uint16_t BlockLength = 16;
+	uint64_t BrokenDateGUID;
+	int32_t BrokenDateSecurityID;
+	uint16_t BrokenDateStart;
+	uint16_t BrokenDateEnd;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SecurityDefinitionResponse_NoBrokenDates;
+		static constexpr auto value = glz::object("BrokenDateGUID", &T::BrokenDateGUID, "BrokenDateSecurityID", &T::BrokenDateSecurityID, "BrokenDateStart", &T::BrokenDateStart, "BrokenDateEnd", &T::BrokenDateEnd); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SecurityDefinitionResponse_NoBrokenDates>);
+static_assert(sizeof(SecurityDefinitionResponse_NoBrokenDates) == 16, "SecurityDefinitionResponse_NoBrokenDates block size mismatch");
+
+// Walks the repeating groups of a SecurityDefinitionResponse in wire order.
+struct SecurityDefinitionResponseGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static SecurityDefinitionResponseGroups Of(const SecurityDefinitionResponse& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<SecurityDefinitionResponse_NoLegs> NoLegs() const { return Sbe::GroupReader<SecurityDefinitionResponse_NoLegs>(Root + SecurityDefinitionResponse::BlockLength); }
+	Sbe::GroupReader<SecurityDefinitionResponse_NoBrokenDates> NoBrokenDates() const { return Sbe::GroupReader<SecurityDefinitionResponse_NoBrokenDates>(NoLegs().End()); }
+};
+
 // OrderMassActionReport562  (template 562, blockLength 130, semanticType "BZ")
-// PHASE 2 trailing after root block: group NoAffectedOrders
+#pragma pack(push, 1)
 struct OrderMassActionReport
 {
 	static constexpr uint16_t TemplateId = 562;
@@ -2214,11 +2913,34 @@ struct OrderMassActionReport
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<OrderMassActionReport>);
-static_assert(sizeof(OrderMassActionReport) == OrderMassActionReport::BlockLength, "OrderMassActionReport root block size mismatch");
+static_assert(sizeof(OrderMassActionReport) == 130, "OrderMassActionReport block size mismatch");
 
+// group NoAffectedOrders of OrderMassActionReport  (entry blockLength 32)
 #pragma pack(push, 1)
+struct OrderMassActionReport_NoAffectedOrders
+{
+	static constexpr uint16_t BlockLength = 32;
+	Tools::StringN<20> OrigCIOrdID;
+	uint64_t AffectedOrderID;
+	uint32_t CxlQuantity;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = OrderMassActionReport_NoAffectedOrders;
+		static constexpr auto value = glz::object("OrigCIOrdID", &T::OrigCIOrdID, "AffectedOrderID", &T::AffectedOrderID, "CxlQuantity", &T::CxlQuantity); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<OrderMassActionReport_NoAffectedOrders>);
+static_assert(sizeof(OrderMassActionReport_NoAffectedOrders) == 32, "OrderMassActionReport_NoAffectedOrders block size mismatch");
+
+// Walks the repeating groups of a OrderMassActionReport in wire order.
+struct OrderMassActionReportGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static OrderMassActionReportGroups Of(const OrderMassActionReport& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<OrderMassActionReport_NoAffectedOrders> NoAffectedOrders() const { return Sbe::GroupReader<OrderMassActionReport_NoAffectedOrders>(Root + OrderMassActionReport::BlockLength); }
+};
+
 // QuoteCancelAck563  (template 563, blockLength 370, semanticType "b")
-// PHASE 2 trailing after root block: group NoQuoteEntries, group NoQuoteSets
+#pragma pack(push, 1)
 struct QuoteCancelAck
 {
 	static constexpr uint16_t TemplateId = 563;
@@ -2258,10 +2980,50 @@ struct QuoteCancelAck
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<QuoteCancelAck>);
-static_assert(sizeof(QuoteCancelAck) == QuoteCancelAck::BlockLength, "QuoteCancelAck root block size mismatch");
+static_assert(sizeof(QuoteCancelAck) == 370, "QuoteCancelAck block size mismatch");
 
+// group NoQuoteEntries of QuoteCancelAck  (entry blockLength 9)
 #pragma pack(push, 1)
+struct QuoteCancelAck_NoQuoteEntries
+{
+	static constexpr uint16_t BlockLength = 9;
+	uint32_t QuoteEntryID;
+	int32_t SecurityID;
+	uint8_t QuoteEntryRejectReason;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = QuoteCancelAck_NoQuoteEntries;
+		static constexpr auto value = glz::object("QuoteEntryID", &T::QuoteEntryID, "SecurityID", &T::SecurityID, "QuoteEntryRejectReason", &T::QuoteEntryRejectReason); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<QuoteCancelAck_NoQuoteEntries>);
+static_assert(sizeof(QuoteCancelAck_NoQuoteEntries) == 9, "QuoteCancelAck_NoQuoteEntries block size mismatch");
+
+// group NoQuoteSets of QuoteCancelAck  (entry blockLength 4)
+#pragma pack(push, 1)
+struct QuoteCancelAck_NoQuoteSets
+{
+	static constexpr uint16_t BlockLength = 4;
+	uint16_t QuoteSetID;
+	uint16_t QuoteErrorCode;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = QuoteCancelAck_NoQuoteSets;
+		static constexpr auto value = glz::object("QuoteSetID", &T::QuoteSetID, "QuoteErrorCode", &T::QuoteErrorCode); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<QuoteCancelAck_NoQuoteSets>);
+static_assert(sizeof(QuoteCancelAck_NoQuoteSets) == 4, "QuoteCancelAck_NoQuoteSets block size mismatch");
+
+// Walks the repeating groups of a QuoteCancelAck in wire order.
+struct QuoteCancelAckGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static QuoteCancelAckGroups Of(const QuoteCancelAck& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<QuoteCancelAck_NoQuoteEntries> NoQuoteEntries() const { return Sbe::GroupReader<QuoteCancelAck_NoQuoteEntries>(Root + QuoteCancelAck::BlockLength); }
+	Sbe::GroupReader<QuoteCancelAck_NoQuoteSets> NoQuoteSets() const { return Sbe::GroupReader<QuoteCancelAck_NoQuoteSets>(NoQuoteEntries().End()); }
+};
+
 // ExecutionReportPendingCancel564  (template 564, blockLength 219, semanticType "8")
+#pragma pack(push, 1)
 struct ExecutionReportPendingCancel
 {
 	static constexpr uint16_t TemplateId = 564;
@@ -2308,10 +3070,10 @@ struct ExecutionReportPendingCancel
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportPendingCancel>);
-static_assert(sizeof(ExecutionReportPendingCancel) == ExecutionReportPendingCancel::BlockLength, "ExecutionReportPendingCancel root block size mismatch");
+static_assert(sizeof(ExecutionReportPendingCancel) == 219, "ExecutionReportPendingCancel block size mismatch");
 
-#pragma pack(push, 1)
 // ExecutionReportPendingReplace565  (template 565, blockLength 196, semanticType "8")
+#pragma pack(push, 1)
 struct ExecutionReportPendingReplace
 {
 	static constexpr uint16_t TemplateId = 565;
@@ -2356,11 +3118,10 @@ struct ExecutionReportPendingReplace
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ExecutionReportPendingReplace>);
-static_assert(sizeof(ExecutionReportPendingReplace) == ExecutionReportPendingReplace::BlockLength, "ExecutionReportPendingReplace root block size mismatch");
+static_assert(sizeof(ExecutionReportPendingReplace) == 196, "ExecutionReportPendingReplace block size mismatch");
 
-#pragma pack(push, 1)
 // RequestForCross566  (template 566, blockLength 67, semanticType "s")
-// PHASE 2 trailing after root block: group NoSides
+#pragma pack(push, 1)
 struct RequestForCross
 {
 	static constexpr uint16_t TemplateId = 566;
@@ -2385,11 +3146,36 @@ struct RequestForCross
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<RequestForCross>);
-static_assert(sizeof(RequestForCross) == RequestForCross::BlockLength, "RequestForCross root block size mismatch");
+static_assert(sizeof(RequestForCross) == 67, "RequestForCross block size mismatch");
 
+// group NoSides of RequestForCross  (entry blockLength 34)
 #pragma pack(push, 1)
+struct RequestForCross_NoSides
+{
+	static constexpr uint16_t BlockLength = 34;
+	Tools::StringN<20> ClOrdID;
+	uint64_t PartyDetailsListReqID;
+	uint32_t OrderQty;
+	ILink3::SideReq Side;
+	ILink3::SideTimeInForce SideTimeInForce;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = RequestForCross_NoSides;
+		static constexpr auto value = glz::object("ClOrdID", &T::ClOrdID, "PartyDetailsListReqID", &T::PartyDetailsListReqID, "OrderQty", &T::OrderQty, "Side", &T::Side, "SideTimeInForce", &T::SideTimeInForce); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<RequestForCross_NoSides>);
+static_assert(sizeof(RequestForCross_NoSides) == 34, "RequestForCross_NoSides block size mismatch");
+
+// Walks the repeating groups of a RequestForCross in wire order.
+struct RequestForCrossGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static RequestForCrossGroups Of(const RequestForCross& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<RequestForCross_NoSides> NoSides() const { return Sbe::GroupReader<RequestForCross_NoSides>(Root + RequestForCross::BlockLength); }
+};
+
 // MassQuoteRequest567  (template 567, blockLength 124, semanticType "i")
-// PHASE 2 trailing after root block: group NoQuoteEntries
+#pragma pack(push, 1)
 struct MassQuoteRequest
 {
 	static constexpr uint16_t TemplateId = 567;
@@ -2417,11 +3203,37 @@ struct MassQuoteRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MassQuoteRequest>);
-static_assert(sizeof(MassQuoteRequest) == MassQuoteRequest::BlockLength, "MassQuoteRequest root block size mismatch");
+static_assert(sizeof(MassQuoteRequest) == 124, "MassQuoteRequest block size mismatch");
 
+// group NoQuoteEntries of MassQuoteRequest  (entry blockLength 23)
 #pragma pack(push, 1)
+struct MassQuoteRequest_NoQuoteEntries
+{
+	static constexpr uint16_t BlockLength = 23;
+	int32_t SecurityID;
+	ILink3::PRICE9 Price;
+	uint32_t OrderQty;
+	ILink3::Side Side;
+	uint32_t QuoteEntryID;
+	uint16_t QuoteSetID;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MassQuoteRequest_NoQuoteEntries;
+		static constexpr auto value = glz::object("SecurityID", &T::SecurityID, "Price", &T::Price, "OrderQty", &T::OrderQty, "Side", &T::Side, "QuoteEntryID", &T::QuoteEntryID, "QuoteSetID", &T::QuoteSetID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MassQuoteRequest_NoQuoteEntries>);
+static_assert(sizeof(MassQuoteRequest_NoQuoteEntries) == 23, "MassQuoteRequest_NoQuoteEntries block size mismatch");
+
+// Walks the repeating groups of a MassQuoteRequest in wire order.
+struct MassQuoteRequestGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MassQuoteRequestGroups Of(const MassQuoteRequest& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MassQuoteRequest_NoQuoteEntries> NoQuoteEntries() const { return Sbe::GroupReader<MassQuoteRequest_NoQuoteEntries>(Root + MassQuoteRequest::BlockLength); }
+};
+
 // QuoteCancelBySet568  (template 568, blockLength 52, semanticType "Z")
-// PHASE 2 trailing after root block: group NoQuoteSets
+#pragma pack(push, 1)
 struct QuoteCancelBySet
 {
 	static constexpr uint16_t TemplateId = 568;
@@ -2444,11 +3256,32 @@ struct QuoteCancelBySet
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<QuoteCancelBySet>);
-static_assert(sizeof(QuoteCancelBySet) == QuoteCancelBySet::BlockLength, "QuoteCancelBySet root block size mismatch");
+static_assert(sizeof(QuoteCancelBySet) == 52, "QuoteCancelBySet block size mismatch");
 
+// group NoQuoteSets of QuoteCancelBySet  (entry blockLength 2)
 #pragma pack(push, 1)
+struct QuoteCancelBySet_NoQuoteSets
+{
+	static constexpr uint16_t BlockLength = 2;
+	uint16_t QuoteSetID;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = QuoteCancelBySet_NoQuoteSets;
+		static constexpr auto value = glz::object("QuoteSetID", &T::QuoteSetID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<QuoteCancelBySet_NoQuoteSets>);
+static_assert(sizeof(QuoteCancelBySet_NoQuoteSets) == 2, "QuoteCancelBySet_NoQuoteSets block size mismatch");
+
+// Walks the repeating groups of a QuoteCancelBySet in wire order.
+struct QuoteCancelBySetGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static QuoteCancelBySetGroups Of(const QuoteCancelBySet& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<QuoteCancelBySet_NoQuoteSets> NoQuoteSets() const { return Sbe::GroupReader<QuoteCancelBySet_NoQuoteSets>(Root + QuoteCancelBySet::BlockLength); }
+};
+
 // QuoteCancelByGroup569  (template 569, blockLength 52, semanticType "Z")
-// PHASE 2 trailing after root block: group NoQuoteEntries
+#pragma pack(push, 1)
 struct QuoteCancelByGroup
 {
 	static constexpr uint16_t TemplateId = 569;
@@ -2471,11 +3304,32 @@ struct QuoteCancelByGroup
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<QuoteCancelByGroup>);
-static_assert(sizeof(QuoteCancelByGroup) == QuoteCancelByGroup::BlockLength, "QuoteCancelByGroup root block size mismatch");
+static_assert(sizeof(QuoteCancelByGroup) == 52, "QuoteCancelByGroup block size mismatch");
 
+// group NoQuoteEntries of QuoteCancelByGroup  (entry blockLength 6)
 #pragma pack(push, 1)
+struct QuoteCancelByGroup_NoQuoteEntries
+{
+	static constexpr uint16_t BlockLength = 6;
+	Tools::StringN<6> SecurityGroup;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = QuoteCancelByGroup_NoQuoteEntries;
+		static constexpr auto value = glz::object("SecurityGroup", &T::SecurityGroup); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<QuoteCancelByGroup_NoQuoteEntries>);
+static_assert(sizeof(QuoteCancelByGroup_NoQuoteEntries) == 6, "QuoteCancelByGroup_NoQuoteEntries block size mismatch");
+
+// Walks the repeating groups of a QuoteCancelByGroup in wire order.
+struct QuoteCancelByGroupGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static QuoteCancelByGroupGroups Of(const QuoteCancelByGroup& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<QuoteCancelByGroup_NoQuoteEntries> NoQuoteEntries() const { return Sbe::GroupReader<QuoteCancelByGroup_NoQuoteEntries>(Root + QuoteCancelByGroup::BlockLength); }
+};
+
 // QuoteCancelByInstrument570  (template 570, blockLength 51, semanticType "Z")
-// PHASE 2 trailing after root block: group NoQuoteEntries
+#pragma pack(push, 1)
 struct QuoteCancelByInstrument
 {
 	static constexpr uint16_t TemplateId = 570;
@@ -2497,11 +3351,32 @@ struct QuoteCancelByInstrument
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<QuoteCancelByInstrument>);
-static_assert(sizeof(QuoteCancelByInstrument) == QuoteCancelByInstrument::BlockLength, "QuoteCancelByInstrument root block size mismatch");
+static_assert(sizeof(QuoteCancelByInstrument) == 51, "QuoteCancelByInstrument block size mismatch");
 
+// group NoQuoteEntries of QuoteCancelByInstrument  (entry blockLength 4)
 #pragma pack(push, 1)
+struct QuoteCancelByInstrument_NoQuoteEntries
+{
+	static constexpr uint16_t BlockLength = 4;
+	int32_t SecurityID;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = QuoteCancelByInstrument_NoQuoteEntries;
+		static constexpr auto value = glz::object("SecurityID", &T::SecurityID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<QuoteCancelByInstrument_NoQuoteEntries>);
+static_assert(sizeof(QuoteCancelByInstrument_NoQuoteEntries) == 4, "QuoteCancelByInstrument_NoQuoteEntries block size mismatch");
+
+// Walks the repeating groups of a QuoteCancelByInstrument in wire order.
+struct QuoteCancelByInstrumentGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static QuoteCancelByInstrumentGroups Of(const QuoteCancelByInstrument& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<QuoteCancelByInstrument_NoQuoteEntries> NoQuoteEntries() const { return Sbe::GroupReader<QuoteCancelByInstrument_NoQuoteEntries>(Root + QuoteCancelByInstrument::BlockLength); }
+};
+
 // MassQuoteResponse571  (template 571, blockLength 350, semanticType "b")
-// PHASE 2 trailing after root block: group NoQuoteEntries
+#pragma pack(push, 1)
 struct MassQuoteResponse
 {
 	static constexpr uint16_t TemplateId = 571;
@@ -2537,7 +3412,34 @@ struct MassQuoteResponse
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MassQuoteResponse>);
-static_assert(sizeof(MassQuoteResponse) == MassQuoteResponse::BlockLength, "MassQuoteResponse root block size mismatch");
+static_assert(sizeof(MassQuoteResponse) == 350, "MassQuoteResponse block size mismatch");
+
+// group NoQuoteEntries of MassQuoteResponse  (entry blockLength 20)
+#pragma pack(push, 1)
+struct MassQuoteResponse_NoQuoteEntries
+{
+	static constexpr uint16_t BlockLength = 20;
+	uint64_t OrderID;
+	uint32_t QuoteEntryID;
+	uint16_t QuoteSetID;
+	int32_t SecurityID;
+	ILink3::Side Side;
+	uint8_t QuoteEntryRejectReason;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MassQuoteResponse_NoQuoteEntries;
+		static constexpr auto value = glz::object("OrderID", &T::OrderID, "QuoteEntryID", &T::QuoteEntryID, "QuoteSetID", &T::QuoteSetID, "SecurityID", &T::SecurityID, "Side", &T::Side, "QuoteEntryRejectReason", &T::QuoteEntryRejectReason); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MassQuoteResponse_NoQuoteEntries>);
+static_assert(sizeof(MassQuoteResponse_NoQuoteEntries) == 20, "MassQuoteResponse_NoQuoteEntries block size mismatch");
+
+// Walks the repeating groups of a MassQuoteResponse in wire order.
+struct MassQuoteResponseGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MassQuoteResponseGroups Of(const MassQuoteResponse& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MassQuoteResponse_NoQuoteEntries> NoQuoteEntries() const { return Sbe::GroupReader<MassQuoteResponse_NoQuoteEntries>(Root + MassQuoteResponse::BlockLength); }
+};
 
 // Template id -> message, for RX dispatch.
 enum class Template : uint16_t
@@ -2665,6 +3567,823 @@ inline std::string_view ToObjectType(uint16_t templateId)
 	}
 }
 
+// MassQuote: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MassQuote(const void* body)
+{
+	const MassQuote& message = *reinterpret_cast<const MassQuote*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MassQuoteGroups::Of(message);
+	line += needComma ? ",\"NoQuoteEntries\":[" : "\"NoQuoteEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// PartyDetailsDefinitionRequest: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_PartyDetailsDefinitionRequest(const void* body)
+{
+	const PartyDetailsDefinitionRequest& message = *reinterpret_cast<const PartyDetailsDefinitionRequest*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = PartyDetailsDefinitionRequestGroups::Of(message);
+	line += needComma ? ",\"NoPartyDetails\":[" : "\"NoPartyDetails\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoPartyDetails())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoTrdRegPublications\":[" : "\"NoTrdRegPublications\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoTrdRegPublications())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// PartyDetailsDefinitionRequestAck: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_PartyDetailsDefinitionRequestAck(const void* body)
+{
+	const PartyDetailsDefinitionRequestAck& message = *reinterpret_cast<const PartyDetailsDefinitionRequestAck*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = PartyDetailsDefinitionRequestAckGroups::Of(message);
+	line += needComma ? ",\"NoPartyDetails\":[" : "\"NoPartyDetails\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoPartyDetails())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoTrdRegPublications\":[" : "\"NoTrdRegPublications\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoTrdRegPublications())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// ExecutionReportTradeOutright: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_ExecutionReportTradeOutright(const void* body)
+{
+	const ExecutionReportTradeOutright& message = *reinterpret_cast<const ExecutionReportTradeOutright*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = ExecutionReportTradeOutrightGroups::Of(message);
+	line += needComma ? ",\"NoFills\":[" : "\"NoFills\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoFills())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderEvents\":[" : "\"NoOrderEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// ExecutionReportTradeSpread: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_ExecutionReportTradeSpread(const void* body)
+{
+	const ExecutionReportTradeSpread& message = *reinterpret_cast<const ExecutionReportTradeSpread*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = ExecutionReportTradeSpreadGroups::Of(message);
+	line += needComma ? ",\"NoFills\":[" : "\"NoFills\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoFills())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoLegs\":[" : "\"NoLegs\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLegs())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderEvents\":[" : "\"NoOrderEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// ExecutionReportTradeSpreadLeg: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_ExecutionReportTradeSpreadLeg(const void* body)
+{
+	const ExecutionReportTradeSpreadLeg& message = *reinterpret_cast<const ExecutionReportTradeSpreadLeg*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = ExecutionReportTradeSpreadLegGroups::Of(message);
+	line += needComma ? ",\"NoFills\":[" : "\"NoFills\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoFills())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderEvents\":[" : "\"NoOrderEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// QuoteCancel: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_QuoteCancel(const void* body)
+{
+	const QuoteCancel& message = *reinterpret_cast<const QuoteCancel*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = QuoteCancelGroups::Of(message);
+	line += needComma ? ",\"NoQuoteEntries\":[" : "\"NoQuoteEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoQuoteSets\":[" : "\"NoQuoteSets\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteSets())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// PartyDetailsListRequest: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_PartyDetailsListRequest(const void* body)
+{
+	const PartyDetailsListRequest& message = *reinterpret_cast<const PartyDetailsListRequest*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = PartyDetailsListRequestGroups::Of(message);
+	line += needComma ? ",\"NoRequestingPartyIDs\":[" : "\"NoRequestingPartyIDs\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoRequestingPartyIDs())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoPartyIDs\":[" : "\"NoPartyIDs\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoPartyIDs())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// PartyDetailsListReport: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_PartyDetailsListReport(const void* body)
+{
+	const PartyDetailsListReport& message = *reinterpret_cast<const PartyDetailsListReport*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = PartyDetailsListReportGroups::Of(message);
+	line += needComma ? ",\"NoPartyDetails\":[" : "\"NoPartyDetails\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoPartyDetails())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoTrdRegPublications\":[" : "\"NoTrdRegPublications\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoTrdRegPublications())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// RequestForQuote: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_RequestForQuote(const void* body)
+{
+	const RequestForQuote& message = *reinterpret_cast<const RequestForQuote*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = RequestForQuoteGroups::Of(message);
+	line += needComma ? ",\"NoRelatedSym\":[" : "\"NoRelatedSym\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoRelatedSym())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// NewOrderCross: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_NewOrderCross(const void* body)
+{
+	const NewOrderCross& message = *reinterpret_cast<const NewOrderCross*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = NewOrderCrossGroups::Of(message);
+	line += needComma ? ",\"NoSides\":[" : "\"NoSides\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoSides())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MassQuoteAck: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MassQuoteAck(const void* body)
+{
+	const MassQuoteAck& message = *reinterpret_cast<const MassQuoteAck*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MassQuoteAckGroups::Of(message);
+	line += needComma ? ",\"NoQuoteEntries\":[" : "\"NoQuoteEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// ExecutionReportTradeAddendumOutright: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_ExecutionReportTradeAddendumOutright(const void* body)
+{
+	const ExecutionReportTradeAddendumOutright& message = *reinterpret_cast<const ExecutionReportTradeAddendumOutright*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = ExecutionReportTradeAddendumOutrightGroups::Of(message);
+	line += needComma ? ",\"NoFills\":[" : "\"NoFills\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoFills())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderEvents\":[" : "\"NoOrderEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// ExecutionReportTradeAddendumSpread: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_ExecutionReportTradeAddendumSpread(const void* body)
+{
+	const ExecutionReportTradeAddendumSpread& message = *reinterpret_cast<const ExecutionReportTradeAddendumSpread*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = ExecutionReportTradeAddendumSpreadGroups::Of(message);
+	line += needComma ? ",\"NoFills\":[" : "\"NoFills\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoFills())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoLegs\":[" : "\"NoLegs\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLegs())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderEvents\":[" : "\"NoOrderEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// ExecutionReportTradeAddendumSpreadLeg: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_ExecutionReportTradeAddendumSpreadLeg(const void* body)
+{
+	const ExecutionReportTradeAddendumSpreadLeg& message = *reinterpret_cast<const ExecutionReportTradeAddendumSpreadLeg*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = ExecutionReportTradeAddendumSpreadLegGroups::Of(message);
+	line += needComma ? ",\"NoFills\":[" : "\"NoFills\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoFills())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderEvents\":[" : "\"NoOrderEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// SecurityDefinitionRequest: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_SecurityDefinitionRequest(const void* body)
+{
+	const SecurityDefinitionRequest& message = *reinterpret_cast<const SecurityDefinitionRequest*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = SecurityDefinitionRequestGroups::Of(message);
+	line += needComma ? ",\"NoLegs\":[" : "\"NoLegs\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLegs())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoBrokenDates\":[" : "\"NoBrokenDates\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoBrokenDates())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// SecurityDefinitionResponse: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_SecurityDefinitionResponse(const void* body)
+{
+	const SecurityDefinitionResponse& message = *reinterpret_cast<const SecurityDefinitionResponse*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = SecurityDefinitionResponseGroups::Of(message);
+	line += needComma ? ",\"NoLegs\":[" : "\"NoLegs\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLegs())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoBrokenDates\":[" : "\"NoBrokenDates\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoBrokenDates())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// OrderMassActionReport: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_OrderMassActionReport(const void* body)
+{
+	const OrderMassActionReport& message = *reinterpret_cast<const OrderMassActionReport*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = OrderMassActionReportGroups::Of(message);
+	line += needComma ? ",\"NoAffectedOrders\":[" : "\"NoAffectedOrders\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoAffectedOrders())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// QuoteCancelAck: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_QuoteCancelAck(const void* body)
+{
+	const QuoteCancelAck& message = *reinterpret_cast<const QuoteCancelAck*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = QuoteCancelAckGroups::Of(message);
+	line += needComma ? ",\"NoQuoteEntries\":[" : "\"NoQuoteEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoQuoteSets\":[" : "\"NoQuoteSets\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteSets())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// RequestForCross: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_RequestForCross(const void* body)
+{
+	const RequestForCross& message = *reinterpret_cast<const RequestForCross*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = RequestForCrossGroups::Of(message);
+	line += needComma ? ",\"NoSides\":[" : "\"NoSides\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoSides())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MassQuoteRequest: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MassQuoteRequest(const void* body)
+{
+	const MassQuoteRequest& message = *reinterpret_cast<const MassQuoteRequest*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MassQuoteRequestGroups::Of(message);
+	line += needComma ? ",\"NoQuoteEntries\":[" : "\"NoQuoteEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// QuoteCancelBySet: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_QuoteCancelBySet(const void* body)
+{
+	const QuoteCancelBySet& message = *reinterpret_cast<const QuoteCancelBySet*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = QuoteCancelBySetGroups::Of(message);
+	line += needComma ? ",\"NoQuoteSets\":[" : "\"NoQuoteSets\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteSets())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// QuoteCancelByGroup: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_QuoteCancelByGroup(const void* body)
+{
+	const QuoteCancelByGroup& message = *reinterpret_cast<const QuoteCancelByGroup*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = QuoteCancelByGroupGroups::Of(message);
+	line += needComma ? ",\"NoQuoteEntries\":[" : "\"NoQuoteEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// QuoteCancelByInstrument: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_QuoteCancelByInstrument(const void* body)
+{
+	const QuoteCancelByInstrument& message = *reinterpret_cast<const QuoteCancelByInstrument*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = QuoteCancelByInstrumentGroups::Of(message);
+	line += needComma ? ",\"NoQuoteEntries\":[" : "\"NoQuoteEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MassQuoteResponse: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MassQuoteResponse(const void* body)
+{
+	const MassQuoteResponse& message = *reinterpret_cast<const MassQuoteResponse*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MassQuoteResponseGroups::Of(message);
+	line += needComma ? ",\"NoQuoteEntries\":[" : "\"NoQuoteEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoQuoteEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
 // Template id + body -> the message as one compact JSON line, for logging.
 inline std::string ToJsonLine(uint16_t templateId, const void* body)
 {
@@ -2685,17 +4404,17 @@ inline std::string ToJsonLine(uint16_t templateId, const void* body)
 		case 514: return Tools::Json::SerializeToLine(*reinterpret_cast<const NewOrderSingle*>(body));
 		case 515: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderCancelReplaceRequest*>(body));
 		case 516: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderCancelRequest*>(body));
-		case 517: return Tools::Json::SerializeToLine(*reinterpret_cast<const MassQuote*>(body));
-		case 518: return Tools::Json::SerializeToLine(*reinterpret_cast<const PartyDetailsDefinitionRequest*>(body));
-		case 519: return Tools::Json::SerializeToLine(*reinterpret_cast<const PartyDetailsDefinitionRequestAck*>(body));
+		case 517: return ToJsonLine_MassQuote(body);
+		case 518: return ToJsonLine_PartyDetailsDefinitionRequest(body);
+		case 519: return ToJsonLine_PartyDetailsDefinitionRequestAck(body);
 		case 521: return Tools::Json::SerializeToLine(*reinterpret_cast<const BusinessReject*>(body));
 		case 522: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportNew*>(body));
 		case 523: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportReject*>(body));
 		case 524: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportElimination*>(body));
-		case 525: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeOutright*>(body));
-		case 526: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeSpread*>(body));
-		case 527: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeSpreadLeg*>(body));
-		case 528: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancel*>(body));
+		case 525: return ToJsonLine_ExecutionReportTradeOutright(body);
+		case 526: return ToJsonLine_ExecutionReportTradeSpread(body);
+		case 527: return ToJsonLine_ExecutionReportTradeSpreadLeg(body);
+		case 528: return ToJsonLine_QuoteCancel(body);
 		case 529: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderMassActionRequest*>(body));
 		case 530: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderMassStatusRequest*>(body));
 		case 531: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportModify*>(body));
@@ -2704,28 +4423,28 @@ inline std::string ToJsonLine(uint16_t templateId, const void* body)
 		case 534: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportCancel*>(body));
 		case 535: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderCancelReject*>(body));
 		case 536: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderCancelReplaceReject*>(body));
-		case 537: return Tools::Json::SerializeToLine(*reinterpret_cast<const PartyDetailsListRequest*>(body));
-		case 538: return Tools::Json::SerializeToLine(*reinterpret_cast<const PartyDetailsListReport*>(body));
+		case 537: return ToJsonLine_PartyDetailsListRequest(body);
+		case 538: return ToJsonLine_PartyDetailsListReport(body);
 		case 539: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionAck*>(body));
-		case 543: return Tools::Json::SerializeToLine(*reinterpret_cast<const RequestForQuote*>(body));
-		case 544: return Tools::Json::SerializeToLine(*reinterpret_cast<const NewOrderCross*>(body));
-		case 545: return Tools::Json::SerializeToLine(*reinterpret_cast<const MassQuoteAck*>(body));
+		case 543: return ToJsonLine_RequestForQuote(body);
+		case 544: return ToJsonLine_NewOrderCross(body);
+		case 545: return ToJsonLine_MassQuoteAck(body);
 		case 546: return Tools::Json::SerializeToLine(*reinterpret_cast<const RequestForQuoteAck*>(body));
-		case 548: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeAddendumOutright*>(body));
-		case 549: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeAddendumSpread*>(body));
-		case 550: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportTradeAddendumSpreadLeg*>(body));
-		case 560: return Tools::Json::SerializeToLine(*reinterpret_cast<const SecurityDefinitionRequest*>(body));
-		case 561: return Tools::Json::SerializeToLine(*reinterpret_cast<const SecurityDefinitionResponse*>(body));
-		case 562: return Tools::Json::SerializeToLine(*reinterpret_cast<const OrderMassActionReport*>(body));
-		case 563: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancelAck*>(body));
+		case 548: return ToJsonLine_ExecutionReportTradeAddendumOutright(body);
+		case 549: return ToJsonLine_ExecutionReportTradeAddendumSpread(body);
+		case 550: return ToJsonLine_ExecutionReportTradeAddendumSpreadLeg(body);
+		case 560: return ToJsonLine_SecurityDefinitionRequest(body);
+		case 561: return ToJsonLine_SecurityDefinitionResponse(body);
+		case 562: return ToJsonLine_OrderMassActionReport(body);
+		case 563: return ToJsonLine_QuoteCancelAck(body);
 		case 564: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportPendingCancel*>(body));
 		case 565: return Tools::Json::SerializeToLine(*reinterpret_cast<const ExecutionReportPendingReplace*>(body));
-		case 566: return Tools::Json::SerializeToLine(*reinterpret_cast<const RequestForCross*>(body));
-		case 567: return Tools::Json::SerializeToLine(*reinterpret_cast<const MassQuoteRequest*>(body));
-		case 568: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancelBySet*>(body));
-		case 569: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancelByGroup*>(body));
-		case 570: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteCancelByInstrument*>(body));
-		case 571: return Tools::Json::SerializeToLine(*reinterpret_cast<const MassQuoteResponse*>(body));
+		case 566: return ToJsonLine_RequestForCross(body);
+		case 567: return ToJsonLine_MassQuoteRequest(body);
+		case 568: return ToJsonLine_QuoteCancelBySet(body);
+		case 569: return ToJsonLine_QuoteCancelByGroup(body);
+		case 570: return ToJsonLine_QuoteCancelByInstrument(body);
+		case 571: return ToJsonLine_MassQuoteResponse(body);
 		default: return "{}";
 	}
 }

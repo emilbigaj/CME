@@ -131,20 +131,53 @@ public:
 		return true;
 	}
 
-	// Send a new order. The gateway stamps the sequence number and send time — the caller only
-	// fills the order details. Returns false if the session is not open.
+	// Diagnostic: send one PartyDetailsDefinitionRequest with an explicit party id (0 allowed)
+	// and print CME's reply, to probe which id values the session accepts. Returns the reply's
+	// template id (0 if none arrived).
+	uint16_t ProbePartyDetails(uint64_t reqId)
+	{
+		// Step 1: Only meaningful on an open session.
+		if (_state != SessionState::Established)
+			return 0;
+
+		// Step 2: Send the request with the id exactly as given.
+		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, reqId, _outboundSeqNo,
+			static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+		++_outboundSeqNo;
+
+		// Step 3: Print whatever comes back, keyed by the id we sent.
+		FramedMessage message{};
+		if (!ReceiveMessage(message))
+		{
+			std::cout << "  reqId=" << reqId << " -> no reply\n";
+			return 0;
+		}
+		std::cout << "  reqId=" << reqId << " -> " << ToObjectType(message.TemplateId) << ": "
+		          << ToJsonLine(message.TemplateId, message.Body) << "\n";
+		return message.TemplateId;
+	}
+
+	// Send a new order using on-demand party details, which is what this session supports: a
+	// PartyDetailsDefinitionRequest carrying the parties (id 0) is sent immediately before the
+	// order, and the order references id 0 — CME applies the just-defined parties to it. The
+	// caller only fills the order details; the gateway stamps the party id, sequence numbers,
+	// and send times. Returns false if the session is not open.
 	bool SendNewOrderSingle(NewOrderSingle order)
 	{
 		// Step 1: Only send on an open session.
 		if (_state != SessionState::Established)
 			return false;
 
-		// Step 2: Stamp the fields the gateway owns: this message's sequence number and the
-		// current send time.
+		// Step 2: Define the parties for this order (id 0), as its own sequenced message.
+		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
+			_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+		++_outboundSeqNo;
+
+		// Step 3: Send the order referencing id 0, right behind the definition. Stamp the fields
+		// the gateway owns: this message's sequence number and send time.
+		order.PartyDetailsListReqID = 0;
 		order.SeqNum = _outboundSeqNo;
 		order.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
-
-		// Step 3: Frame, send (and log), then advance our outbound sequence.
 		SendFramed(FrameMessage(_sendBuffer, NewOrderSingle::TemplateId, NewOrderSingle::BlockLength, &order, sizeof(order), 0));
 		++_outboundSeqNo;
 		return true;

@@ -259,24 +259,21 @@ def clean_message_name(name, mid):
     return name[:-len(mid)] if name.endswith(mid) else name
 
 
-def emit_message(s, msg, out):
-    mid = msg.get('id')
-    raw_name = msg.get('name')
-    name = ident(clean_message_name(raw_name, mid))
-    block_length = int(msg.get('blockLength'))
-    semantic = msg.get('semanticType', '')
-
-    layout = []     # (offset, size, cppType, memberName)  wire fields, ascending offset
-    constants = []  # (cppType, memberName, value)
-    groups = []     # group/data names deferred to phase 2
-    computed = 0    # running offset for fields without an explicit offset attribute
-    for f in msg:
+def collect_layout(s, container):
+    """Read one message or group element's direct children into: the wire fields (sorted by
+    offset), the constant fields (not on the wire), and any child <group>/<data> elements."""
+    layout = []       # (offset, size, cppType, memberName)
+    constants = []    # (cppType, memberName, value)
+    child_groups = [] # nested <group> elements
+    child_data = []   # nested <data> elements
+    computed = 0      # running offset for fields with no explicit offset attribute
+    for f in container:
         t = tag(f)
         if t == 'group':
-            groups.append('group ' + f.get('name'))
+            child_groups.append(f)
             continue
         if t == 'data':
-            groups.append('data ' + f.get('name'))
+            child_data.append(f)
             continue
         if t != 'field':
             continue
@@ -291,20 +288,20 @@ def emit_message(s, msg, out):
         computed = off + size
         layout.append((off, size, s.field_cpp_type(ftype), ident(f.get('name'))))
     layout.sort(key=lambda x: x[0])
+    return layout, constants, child_groups, child_data
 
+
+def emit_fixed_block(name, block_length, layout, constants, header_lines, out):
+    """Emit one #pragma pack(1) cast-over-the-wire struct for a fixed block (a message root
+    block or a group entry): header constants, the fields (with padding for gaps), the
+    constant fields, glaze/ToString, and the size checks. Returns the emitted field names."""
     out.append('#pragma pack(push, 1)')
-    out.append(f'// {raw_name}  (template {mid}, blockLength {block_length}, semanticType "{semantic}")')
-    if groups:
-        out.append(f'// PHASE 2 trailing after root block: {", ".join(groups)}')
     out.append(f'struct {name}')
     out.append('{')
-    out.append(f'\tstatic constexpr uint16_t TemplateId = {mid};')
-    out.append(f'\tstatic constexpr uint16_t BlockLength = {block_length};')
-    out.append(f'\tstatic constexpr std::string_view ObjectType = "{raw_name}";')
-    if semantic:
-        out.append(f'\tstatic constexpr std::string_view SemanticType = "{semantic}";')
+    for line in header_lines:
+        out.append('\t' + line)
 
-    members = []      # emitted instance member names for glaze (excl. padding)
+    members = []
     cursor = 0
     pad_ix = 0
     for off, size, cpp, mname in layout:
@@ -320,11 +317,10 @@ def emit_message(s, msg, out):
     if cursor < block_length:
         out.append(f'\tuint8_t _pad{pad_ix}[{block_length - cursor}] = {{}};')
     for cpp, mname, val in constants:
-        lit = val if cpp not in ('char',) else f"'{val}'"
-        # constants are strings/chars/ints; wrap char-array constants as string literals
         if cpp.startswith('Tools::StringN'):
             out.append(f'\tstatic constexpr std::string_view {mname} = "{val}";')
         else:
+            lit = val if cpp != 'char' else f"'{val}'"
             out.append(f'\tstatic constexpr {cpp} {mname} = {lit};')
 
     out.append('\tstd::string ToString() const { return Tools::Json::Serialize(*this); }')
@@ -335,13 +331,111 @@ def emit_message(s, msg, out):
     out.append('#pragma pack(pop)')
     out.append(f'static_assert(Tools::PlainOldData<{name}>);')
     if block_length == 0 and not members:
-        # Empty root block (e.g. MDP3 AdminHeartbeat): a C++ empty struct occupies 1 byte,
-        # so the wire assert cannot hold. Never cast or copy such a struct over bytes.
-        out.append(f'static_assert(sizeof({name}) == 1, "{name}: empty root block, do not cast over the wire");')
+        # An empty block (e.g. MDP3 AdminHeartbeat) is 1 byte in C++, so the wire check cannot
+        # hold. Never cast or copy such a struct over bytes.
+        out.append(f'static_assert(sizeof({name}) == 1, "{name}: empty block, do not cast over the wire");')
     else:
-        out.append(f'static_assert(sizeof({name}) == {name}::BlockLength, "{name} root block size mismatch");')
+        out.append(f'static_assert(sizeof({name}) == {block_length}, "{name} block size mismatch");')
     out.append('')
-    return name, mid, raw_name
+    return members
+
+
+def emit_group_entry(s, message_name, group, out):
+    """Emit the per-entry struct for one repeating group, named <Message>_<Group>. Returns
+    (groupName, entryStructName, entryBlockLength). Nested groups/data inside an entry are not
+    modelled yet -- flagged in a comment."""
+    group_name = ident(group.get('name'))
+    entry_name = f'{message_name}_{group_name}'
+    block_length = int(group.get('blockLength'))
+    layout, constants, nested_groups, nested_data = collect_layout(s, group)
+
+    out.append(f'// group {group.get("name")} of {message_name}  (entry blockLength {block_length})')
+    if nested_groups or nested_data:
+        skipped = ', '.join(x.get('name') for x in nested_groups + nested_data)
+        out.append(f'// NOTE: nested {skipped} inside this entry is not modelled yet')
+    header = [f'static constexpr uint16_t BlockLength = {block_length};']
+    emit_fixed_block(entry_name, block_length, layout, constants, header, out)
+    return group_name, entry_name, block_length
+
+
+def emit_message_reader(message_name, group_infos, out):
+    """Emit a reader that walks a message's repeating groups in order. Groups are laid out one
+    after another past the root block, so each group starts where the previous one ended."""
+    reader = message_name + 'Groups'
+    out.append(f'// Walks the repeating groups of a {message_name} in wire order.')
+    out.append(f'struct {reader}')
+    out.append('{')
+    out.append('\tconst uint8_t* Root;   // start of the message body (the root block)')
+    out.append(f'\tstatic {reader} Of(const {message_name}& message) {{ return {{reinterpret_cast<const uint8_t*>(&message)}}; }}')
+    prev = None
+    for group_name, entry_name, _ in group_infos:
+        start = f'Root + {message_name}::BlockLength' if prev is None else f'{prev}().End()'
+        out.append(f'\tSbe::GroupReader<{entry_name}> {group_name}() const {{ return Sbe::GroupReader<{entry_name}>({start}); }}')
+        prev = group_name
+    out.append('};')
+    out.append('')
+
+
+def emit_to_json_with_groups(message_name, group_infos, out):
+    """Emit a helper that renders a message's root block plus each of its repeating groups as one
+    JSON line, so the log shows the group entries (party details, book levels, and the like) and
+    not only the fixed root. Renders the message's top-level groups; entries with their own
+    nested groups (not modelled) show their fixed fields only."""
+    out.append(f'// {message_name}: root block plus its repeating groups, as one JSON line.')
+    out.append(f'inline std::string ToJsonLine_{message_name}(const void* body)')
+    out.append('{')
+    out.append(f'\tconst {message_name}& message = *reinterpret_cast<const {message_name}*>(body);')
+    out.append('\tstd::string line = Tools::Json::SerializeToLine(message);')
+    out.append("\tif (!line.empty() && line.back() == '}')")
+    out.append('\t\tline.pop_back();   // reopen the root object to append the groups')
+    out.append("\tbool needComma = !line.empty() && line.back() != '{';")
+    out.append(f'\tauto groups = {message_name}Groups::Of(message);')
+    for group_name, _entry_name, _ in group_infos:
+        out.append(f'\tline += needComma ? ",\\"{group_name}\\":[" : "\\"{group_name}\\":[";')
+        out.append('\tneedComma = true;')
+        out.append('\t{')
+        out.append('\t\tbool first = true;')
+        out.append(f'\t\tfor (const auto& entry : groups.{group_name}())')
+        out.append('\t\t{')
+        out.append("\t\t\tif (!first) line += ',';")
+        out.append('\t\t\tfirst = false;')
+        out.append('\t\t\tline += Tools::Json::SerializeToLine(entry);')
+        out.append('\t\t}')
+        out.append('\t}')
+        out.append("\tline += ']';")
+    out.append("\tline += '}';")
+    out.append('\treturn line;')
+    out.append('}')
+    out.append('')
+
+
+def emit_message(s, msg, out):
+    mid = msg.get('id')
+    raw_name = msg.get('name')
+    name = ident(clean_message_name(raw_name, mid))
+    block_length = int(msg.get('blockLength'))
+    semantic = msg.get('semanticType', '')
+    layout, constants, child_groups, child_data = collect_layout(s, msg)
+
+    # Step 1: The message root block.
+    out.append(f'// {raw_name}  (template {mid}, blockLength {block_length}, semanticType "{semantic}")')
+    if child_data:
+        out.append(f'// trailing variable-length data (not modelled): {", ".join(d.get("name") for d in child_data)}')
+    header = [
+        f'static constexpr uint16_t TemplateId = {mid};',
+        f'static constexpr uint16_t BlockLength = {block_length};',
+        f'static constexpr std::string_view ObjectType = "{raw_name}";',
+    ]
+    if semantic:
+        header.append(f'static constexpr std::string_view SemanticType = "{semantic}";')
+    emit_fixed_block(name, block_length, layout, constants, header, out)
+
+    # Step 2: A per-entry struct for each repeating group, then a reader to walk them.
+    group_infos = [emit_group_entry(s, name, g, out) for g in child_groups]
+    if group_infos:
+        emit_message_reader(name, group_infos, out)
+
+    return name, mid, raw_name, group_infos
 
 
 def emit_framing(cfg, out):
@@ -387,6 +481,7 @@ def main():
     out.append('#include "String.hpp"   // Tools::StringN')
     out.append('#include "Json.hpp"     // Tools::Json + enum glaze meta (magic_enum)')
     out.append('#include "Tools.hpp"    // Tools::PlainOldData')
+    out.append('#include "SbeGroup.hpp" // Sbe::GroupReader / GroupSize (repeating groups)')
     out.append('')
     out.append(f'namespace {cfg["namespace"]}')
     out.append('{')
@@ -408,16 +503,16 @@ def main():
             continue   # framing/dimension/var-data composites: explicit or phase 2
         emit_composite(s, name, out)
 
-    out.append('// ===== Messages (fixed root block; groups/data are phase 2) =====')
+    out.append('// ===== Messages (fixed root block; repeating groups walked for logging) =====')
     templates = []
     for msg in descendants(s.root, 'message'):
-        nm, mid, raw = emit_message(s, msg, out)
-        templates.append((nm, mid, raw))
+        nm, mid, raw, ginfos = emit_message(s, msg, out)
+        templates.append((nm, mid, raw, ginfos))
 
     out.append('// Template id -> message, for RX dispatch.')
     out.append('enum class Template : uint16_t')
     out.append('{')
-    for nm, mid, _ in sorted(templates, key=lambda x: int(x[1])):
+    for nm, mid, _, _g in sorted(templates, key=lambda x: int(x[1])):
         out.append(f'\t{nm} = {mid},')
     out.append('};')
     out.append('')
@@ -429,23 +524,33 @@ def main():
     out.append('{')
     out.append('\tswitch (templateId)')
     out.append('\t{')
-    for _, mid, raw in sorted(templates, key=lambda x: int(x[1])):
+    for _, mid, raw, _g in sorted(templates, key=lambda x: int(x[1])):
         out.append(f'\t\tcase {mid}: return "{raw}";')
     out.append('\t\tdefault: return "Unknown";')
     out.append('\t}')
     out.append('}')
     out.append('')
 
+    # For every message with repeating groups, a helper that renders root block + groups on one
+    # line, so the log shows group contents (party details, book levels) not just the root.
+    for nm, _mid, _raw, ginfos in sorted(templates, key=lambda x: int(x[1])):
+        if ginfos:
+            emit_to_json_with_groups(nm, ginfos, out)
+
     # Template id + body pointer -> the message serialized as one compact JSON line. Cold
     # path only (used by the logger's drain thread). Messages carrying binary blobs may not
-    # render as valid text, so callers should guard the call.
+    # render as valid text, so callers should guard the call. Messages with groups render root
+    # block + groups; flat messages render the root struct directly.
     out.append('// Template id + body -> the message as one compact JSON line, for logging.')
     out.append('inline std::string ToJsonLine(uint16_t templateId, const void* body)')
     out.append('{')
     out.append('\tswitch (templateId)')
     out.append('\t{')
-    for nm, mid, _ in sorted(templates, key=lambda x: int(x[1])):
-        out.append(f'\t\tcase {mid}: return Tools::Json::SerializeToLine(*reinterpret_cast<const {nm}*>(body));')
+    for nm, mid, _, ginfos in sorted(templates, key=lambda x: int(x[1])):
+        if ginfos:
+            out.append(f'\t\tcase {mid}: return ToJsonLine_{nm}(body);')
+        else:
+            out.append(f'\t\tcase {mid}: return Tools::Json::SerializeToLine(*reinterpret_cast<const {nm}*>(body));')
     out.append('\t\tdefault: return "{}";')
     out.append('\t}')
     out.append('}')

@@ -9,6 +9,7 @@
 #include "String.hpp"   // Tools::StringN
 #include "Json.hpp"     // Tools::Json + enum glaze meta (magic_enum)
 #include "Tools.hpp"    // Tools::PlainOldData
+#include "SbeGroup.hpp" // Sbe::GroupReader / GroupSize (repeating groups)
 
 namespace Mdp3
 {
@@ -386,10 +387,9 @@ struct PRICENULL9
 static_assert(Tools::PlainOldData<PRICENULL9>);
 static_assert(sizeof(PRICENULL9) == 8);
 
-// ===== Messages (fixed root block; groups/data are phase 2) =====
-#pragma pack(push, 1)
+// ===== Messages (fixed root block; repeating groups walked for logging) =====
 // ChannelReset4  (template 4, blockLength 9, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct ChannelReset
 {
 	static constexpr uint16_t TemplateId = 4;
@@ -404,10 +404,34 @@ struct ChannelReset
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<ChannelReset>);
-static_assert(sizeof(ChannelReset) == ChannelReset::BlockLength, "ChannelReset root block size mismatch");
+static_assert(sizeof(ChannelReset) == 9, "ChannelReset block size mismatch");
 
+// group NoMDEntries of ChannelReset  (entry blockLength 2)
 #pragma pack(push, 1)
+struct ChannelReset_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 2;
+	int16_t ApplID;
+	static constexpr int8_t MDUpdateAction = 0;
+	static constexpr char MDEntryType = 'J';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = ChannelReset_NoMDEntries;
+		static constexpr auto value = glz::object("ApplID", &T::ApplID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<ChannelReset_NoMDEntries>);
+static_assert(sizeof(ChannelReset_NoMDEntries) == 2, "ChannelReset_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a ChannelReset in wire order.
+struct ChannelResetGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static ChannelResetGroups Of(const ChannelReset& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<ChannelReset_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<ChannelReset_NoMDEntries>(Root + ChannelReset::BlockLength); }
+};
+
 // AdminHeartbeat12  (template 12, blockLength 0, semanticType "0")
+#pragma pack(push, 1)
 struct AdminHeartbeat
 {
 	static constexpr uint16_t TemplateId = 12;
@@ -420,10 +444,10 @@ struct AdminHeartbeat
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<AdminHeartbeat>);
-static_assert(sizeof(AdminHeartbeat) == 1, "AdminHeartbeat: empty root block, do not cast over the wire");
+static_assert(sizeof(AdminHeartbeat) == 1, "AdminHeartbeat: empty block, do not cast over the wire");
 
-#pragma pack(push, 1)
 // AdminLogin15  (template 15, blockLength 1, semanticType "A")
+#pragma pack(push, 1)
 struct AdminLogin
 {
 	static constexpr uint16_t TemplateId = 15;
@@ -437,10 +461,10 @@ struct AdminLogin
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<AdminLogin>);
-static_assert(sizeof(AdminLogin) == AdminLogin::BlockLength, "AdminLogin root block size mismatch");
+static_assert(sizeof(AdminLogin) == 1, "AdminLogin block size mismatch");
 
-#pragma pack(push, 1)
 // AdminLogout16  (template 16, blockLength 180, semanticType "5")
+#pragma pack(push, 1)
 struct AdminLogout
 {
 	static constexpr uint16_t TemplateId = 16;
@@ -454,10 +478,10 @@ struct AdminLogout
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<AdminLogout>);
-static_assert(sizeof(AdminLogout) == AdminLogout::BlockLength, "AdminLogout root block size mismatch");
+static_assert(sizeof(AdminLogout) == 180, "AdminLogout block size mismatch");
 
-#pragma pack(push, 1)
 // SecurityStatus30  (template 30, blockLength 30, semanticType "f")
+#pragma pack(push, 1)
 struct SecurityStatus
 {
 	static constexpr uint16_t TemplateId = 30;
@@ -479,11 +503,10 @@ struct SecurityStatus
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SecurityStatus>);
-static_assert(sizeof(SecurityStatus) == SecurityStatus::BlockLength, "SecurityStatus root block size mismatch");
+static_assert(sizeof(SecurityStatus) == 30, "SecurityStatus block size mismatch");
 
-#pragma pack(push, 1)
 // MDIncrementalRefreshVolume37  (template 37, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshVolume
 {
 	static constexpr uint16_t TemplateId = 37;
@@ -499,11 +522,37 @@ struct MDIncrementalRefreshVolume
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshVolume>);
-static_assert(sizeof(MDIncrementalRefreshVolume) == MDIncrementalRefreshVolume::BlockLength, "MDIncrementalRefreshVolume root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshVolume) == 11, "MDIncrementalRefreshVolume block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshVolume  (entry blockLength 16)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshVolume_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 16;
+	int32_t MDEntrySize;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	uint8_t _pad0[3] = {};
+	static constexpr char MDEntryType = 'e';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshVolume_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntrySize", &T::MDEntrySize, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq, "MDUpdateAction", &T::MDUpdateAction); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshVolume_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshVolume_NoMDEntries) == 16, "MDIncrementalRefreshVolume_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshVolume in wire order.
+struct MDIncrementalRefreshVolumeGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshVolumeGroups Of(const MDIncrementalRefreshVolume& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshVolume_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshVolume_NoMDEntries>(Root + MDIncrementalRefreshVolume::BlockLength); }
+};
+
 // QuoteRequest39  (template 39, blockLength 35, semanticType "R")
-// PHASE 2 trailing after root block: group NoRelatedSym
+#pragma pack(push, 1)
 struct QuoteRequest
 {
 	static constexpr uint16_t TemplateId = 39;
@@ -520,11 +569,37 @@ struct QuoteRequest
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<QuoteRequest>);
-static_assert(sizeof(QuoteRequest) == QuoteRequest::BlockLength, "QuoteRequest root block size mismatch");
+static_assert(sizeof(QuoteRequest) == 35, "QuoteRequest block size mismatch");
 
+// group NoRelatedSym of QuoteRequest  (entry blockLength 32)
 #pragma pack(push, 1)
+struct QuoteRequest_NoRelatedSym
+{
+	static constexpr uint16_t BlockLength = 32;
+	Tools::StringN<20> Symbol;
+	int32_t SecurityID;
+	int32_t OrderQty;
+	int8_t QuoteType;
+	int8_t Side;
+	uint8_t _pad0[2] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = QuoteRequest_NoRelatedSym;
+		static constexpr auto value = glz::object("Symbol", &T::Symbol, "SecurityID", &T::SecurityID, "OrderQty", &T::OrderQty, "QuoteType", &T::QuoteType, "Side", &T::Side); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<QuoteRequest_NoRelatedSym>);
+static_assert(sizeof(QuoteRequest_NoRelatedSym) == 32, "QuoteRequest_NoRelatedSym block size mismatch");
+
+// Walks the repeating groups of a QuoteRequest in wire order.
+struct QuoteRequestGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static QuoteRequestGroups Of(const QuoteRequest& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<QuoteRequest_NoRelatedSym> NoRelatedSym() const { return Sbe::GroupReader<QuoteRequest_NoRelatedSym>(Root + QuoteRequest::BlockLength); }
+};
+
 // MDIncrementalRefreshBook46  (template 46, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries, group NoOrderIDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshBook
 {
 	static constexpr uint16_t TemplateId = 46;
@@ -540,11 +615,61 @@ struct MDIncrementalRefreshBook
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshBook>);
-static_assert(sizeof(MDIncrementalRefreshBook) == MDIncrementalRefreshBook::BlockLength, "MDIncrementalRefreshBook root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshBook) == 11, "MDIncrementalRefreshBook block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshBook  (entry blockLength 32)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshBook_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 32;
+	Mdp3::PRICENULL9 MDEntryPx;
+	int32_t MDEntrySize;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	int32_t NumberOfOrders;
+	uint8_t MDPriceLevel;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	Mdp3::MDEntryTypeBook MDEntryType;
+	int32_t TradeableSize;
+	uint8_t _pad0[1] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshBook_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq, "NumberOfOrders", &T::NumberOfOrders, "MDPriceLevel", &T::MDPriceLevel, "MDUpdateAction", &T::MDUpdateAction, "MDEntryType", &T::MDEntryType, "TradeableSize", &T::TradeableSize); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshBook_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshBook_NoMDEntries) == 32, "MDIncrementalRefreshBook_NoMDEntries block size mismatch");
+
+// group NoOrderIDEntries of MDIncrementalRefreshBook  (entry blockLength 24)
+#pragma pack(push, 1)
+struct MDIncrementalRefreshBook_NoOrderIDEntries
+{
+	static constexpr uint16_t BlockLength = 24;
+	uint64_t OrderID;
+	uint64_t MDOrderPriority;
+	int32_t MDDisplayQty;
+	uint8_t ReferenceID;
+	Mdp3::OrderUpdateAction OrderUpdateAction;
+	uint8_t _pad0[2] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshBook_NoOrderIDEntries;
+		static constexpr auto value = glz::object("OrderID", &T::OrderID, "MDOrderPriority", &T::MDOrderPriority, "MDDisplayQty", &T::MDDisplayQty, "ReferenceID", &T::ReferenceID, "OrderUpdateAction", &T::OrderUpdateAction); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshBook_NoOrderIDEntries>);
+static_assert(sizeof(MDIncrementalRefreshBook_NoOrderIDEntries) == 24, "MDIncrementalRefreshBook_NoOrderIDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshBook in wire order.
+struct MDIncrementalRefreshBookGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshBookGroups Of(const MDIncrementalRefreshBook& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshBook_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshBook_NoMDEntries>(Root + MDIncrementalRefreshBook::BlockLength); }
+	Sbe::GroupReader<MDIncrementalRefreshBook_NoOrderIDEntries> NoOrderIDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshBook_NoOrderIDEntries>(NoMDEntries().End()); }
+};
+
 // MDIncrementalRefreshOrderBook47  (template 47, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshOrderBook
 {
 	static constexpr uint16_t TemplateId = 47;
@@ -560,11 +685,39 @@ struct MDIncrementalRefreshOrderBook
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshOrderBook>);
-static_assert(sizeof(MDIncrementalRefreshOrderBook) == MDIncrementalRefreshOrderBook::BlockLength, "MDIncrementalRefreshOrderBook root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshOrderBook) == 11, "MDIncrementalRefreshOrderBook block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshOrderBook  (entry blockLength 40)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshOrderBook_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 40;
+	uint64_t OrderID;
+	uint64_t MDOrderPriority;
+	Mdp3::PRICENULL9 MDEntryPx;
+	int32_t MDDisplayQty;
+	int32_t SecurityID;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	Mdp3::MDEntryTypeBook MDEntryType;
+	uint8_t _pad0[6] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshOrderBook_NoMDEntries;
+		static constexpr auto value = glz::object("OrderID", &T::OrderID, "MDOrderPriority", &T::MDOrderPriority, "MDEntryPx", &T::MDEntryPx, "MDDisplayQty", &T::MDDisplayQty, "SecurityID", &T::SecurityID, "MDUpdateAction", &T::MDUpdateAction, "MDEntryType", &T::MDEntryType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshOrderBook_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshOrderBook_NoMDEntries) == 40, "MDIncrementalRefreshOrderBook_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshOrderBook in wire order.
+struct MDIncrementalRefreshOrderBookGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshOrderBookGroups Of(const MDIncrementalRefreshOrderBook& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshOrderBook_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshOrderBook_NoMDEntries>(Root + MDIncrementalRefreshOrderBook::BlockLength); }
+};
+
 // MDIncrementalRefreshTradeSummary48  (template 48, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries, group NoOrderIDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshTradeSummary
 {
 	static constexpr uint16_t TemplateId = 48;
@@ -580,11 +733,58 @@ struct MDIncrementalRefreshTradeSummary
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshTradeSummary>);
-static_assert(sizeof(MDIncrementalRefreshTradeSummary) == MDIncrementalRefreshTradeSummary::BlockLength, "MDIncrementalRefreshTradeSummary root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshTradeSummary) == 11, "MDIncrementalRefreshTradeSummary block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshTradeSummary  (entry blockLength 32)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshTradeSummary_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 32;
+	Mdp3::PRICE9 MDEntryPx;
+	int32_t MDEntrySize;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	int32_t NumberOfOrders;
+	Mdp3::AggressorSide AggressorSide;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	uint32_t MDTradeEntryID;
+	uint8_t _pad0[2] = {};
+	static constexpr char MDEntryType = '2';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshTradeSummary_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq, "NumberOfOrders", &T::NumberOfOrders, "AggressorSide", &T::AggressorSide, "MDUpdateAction", &T::MDUpdateAction, "MDTradeEntryID", &T::MDTradeEntryID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshTradeSummary_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshTradeSummary_NoMDEntries) == 32, "MDIncrementalRefreshTradeSummary_NoMDEntries block size mismatch");
+
+// group NoOrderIDEntries of MDIncrementalRefreshTradeSummary  (entry blockLength 16)
+#pragma pack(push, 1)
+struct MDIncrementalRefreshTradeSummary_NoOrderIDEntries
+{
+	static constexpr uint16_t BlockLength = 16;
+	uint64_t OrderID;
+	int32_t LastQty;
+	uint8_t _pad0[4] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshTradeSummary_NoOrderIDEntries;
+		static constexpr auto value = glz::object("OrderID", &T::OrderID, "LastQty", &T::LastQty); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshTradeSummary_NoOrderIDEntries>);
+static_assert(sizeof(MDIncrementalRefreshTradeSummary_NoOrderIDEntries) == 16, "MDIncrementalRefreshTradeSummary_NoOrderIDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshTradeSummary in wire order.
+struct MDIncrementalRefreshTradeSummaryGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshTradeSummaryGroups Of(const MDIncrementalRefreshTradeSummary& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshTradeSummary_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshTradeSummary_NoMDEntries>(Root + MDIncrementalRefreshTradeSummary::BlockLength); }
+	Sbe::GroupReader<MDIncrementalRefreshTradeSummary_NoOrderIDEntries> NoOrderIDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshTradeSummary_NoOrderIDEntries>(NoMDEntries().End()); }
+};
+
 // MDIncrementalRefreshDailyStatistics49  (template 49, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshDailyStatistics
 {
 	static constexpr uint16_t TemplateId = 49;
@@ -600,11 +800,40 @@ struct MDIncrementalRefreshDailyStatistics
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshDailyStatistics>);
-static_assert(sizeof(MDIncrementalRefreshDailyStatistics) == MDIncrementalRefreshDailyStatistics::BlockLength, "MDIncrementalRefreshDailyStatistics root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshDailyStatistics) == 11, "MDIncrementalRefreshDailyStatistics block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshDailyStatistics  (entry blockLength 32)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshDailyStatistics_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 32;
+	Mdp3::PRICENULL9 MDEntryPx;
+	int32_t MDEntrySize;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	uint16_t TradingReferenceDate;
+	Mdp3::SettlPriceType SettlPriceType;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	Mdp3::MDEntryTypeDailyStatistics MDEntryType;
+	uint8_t _pad0[7] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshDailyStatistics_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq, "TradingReferenceDate", &T::TradingReferenceDate, "SettlPriceType", &T::SettlPriceType, "MDUpdateAction", &T::MDUpdateAction, "MDEntryType", &T::MDEntryType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshDailyStatistics_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshDailyStatistics_NoMDEntries) == 32, "MDIncrementalRefreshDailyStatistics_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshDailyStatistics in wire order.
+struct MDIncrementalRefreshDailyStatisticsGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshDailyStatisticsGroups Of(const MDIncrementalRefreshDailyStatistics& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshDailyStatistics_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshDailyStatistics_NoMDEntries>(Root + MDIncrementalRefreshDailyStatistics::BlockLength); }
+};
+
 // MDIncrementalRefreshLimitsBanding50  (template 50, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshLimitsBanding
 {
 	static constexpr uint16_t TemplateId = 50;
@@ -620,11 +849,38 @@ struct MDIncrementalRefreshLimitsBanding
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshLimitsBanding>);
-static_assert(sizeof(MDIncrementalRefreshLimitsBanding) == MDIncrementalRefreshLimitsBanding::BlockLength, "MDIncrementalRefreshLimitsBanding root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshLimitsBanding) == 11, "MDIncrementalRefreshLimitsBanding block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshLimitsBanding  (entry blockLength 32)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshLimitsBanding_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 32;
+	Mdp3::PRICENULL9 HighLimitPrice;
+	Mdp3::PRICENULL9 LowLimitPrice;
+	Mdp3::PRICENULL9 MaxPriceVariation;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	static constexpr int8_t MDUpdateAction = 0;
+	static constexpr char MDEntryType = 'g';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshLimitsBanding_NoMDEntries;
+		static constexpr auto value = glz::object("HighLimitPrice", &T::HighLimitPrice, "LowLimitPrice", &T::LowLimitPrice, "MaxPriceVariation", &T::MaxPriceVariation, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshLimitsBanding_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshLimitsBanding_NoMDEntries) == 32, "MDIncrementalRefreshLimitsBanding_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshLimitsBanding in wire order.
+struct MDIncrementalRefreshLimitsBandingGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshLimitsBandingGroups Of(const MDIncrementalRefreshLimitsBanding& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshLimitsBanding_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshLimitsBanding_NoMDEntries>(Root + MDIncrementalRefreshLimitsBanding::BlockLength); }
+};
+
 // MDIncrementalRefreshSessionStatistics51  (template 51, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshSessionStatistics
 {
 	static constexpr uint16_t TemplateId = 51;
@@ -640,11 +896,39 @@ struct MDIncrementalRefreshSessionStatistics
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshSessionStatistics>);
-static_assert(sizeof(MDIncrementalRefreshSessionStatistics) == MDIncrementalRefreshSessionStatistics::BlockLength, "MDIncrementalRefreshSessionStatistics root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshSessionStatistics) == 11, "MDIncrementalRefreshSessionStatistics block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshSessionStatistics  (entry blockLength 24)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshSessionStatistics_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 24;
+	Mdp3::PRICE9 MDEntryPx;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	Mdp3::OpenCloseSettlFlag OpenCloseSettlFlag;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	Mdp3::MDEntryTypeStatistics MDEntryType;
+	int32_t MDEntrySize;
+	uint8_t _pad0[1] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshSessionStatistics_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq, "OpenCloseSettlFlag", &T::OpenCloseSettlFlag, "MDUpdateAction", &T::MDUpdateAction, "MDEntryType", &T::MDEntryType, "MDEntrySize", &T::MDEntrySize); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshSessionStatistics_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshSessionStatistics_NoMDEntries) == 24, "MDIncrementalRefreshSessionStatistics_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshSessionStatistics in wire order.
+struct MDIncrementalRefreshSessionStatisticsGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshSessionStatisticsGroups Of(const MDIncrementalRefreshSessionStatistics& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshSessionStatistics_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshSessionStatistics_NoMDEntries>(Root + MDIncrementalRefreshSessionStatistics::BlockLength); }
+};
+
 // SnapshotFullRefresh52  (template 52, blockLength 59, semanticType "W")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct SnapshotFullRefresh
 {
 	static constexpr uint16_t TemplateId = 52;
@@ -668,11 +952,39 @@ struct SnapshotFullRefresh
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SnapshotFullRefresh>);
-static_assert(sizeof(SnapshotFullRefresh) == SnapshotFullRefresh::BlockLength, "SnapshotFullRefresh root block size mismatch");
+static_assert(sizeof(SnapshotFullRefresh) == 59, "SnapshotFullRefresh block size mismatch");
 
+// group NoMDEntries of SnapshotFullRefresh  (entry blockLength 22)
 #pragma pack(push, 1)
+struct SnapshotFullRefresh_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 22;
+	Mdp3::PRICENULL9 MDEntryPx;
+	int32_t MDEntrySize;
+	int32_t NumberOfOrders;
+	int8_t MDPriceLevel;
+	uint16_t TradingReferenceDate;
+	Mdp3::OpenCloseSettlFlag OpenCloseSettlFlag;
+	Mdp3::SettlPriceType SettlPriceType;
+	Mdp3::MDEntryType MDEntryType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SnapshotFullRefresh_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "NumberOfOrders", &T::NumberOfOrders, "MDPriceLevel", &T::MDPriceLevel, "TradingReferenceDate", &T::TradingReferenceDate, "OpenCloseSettlFlag", &T::OpenCloseSettlFlag, "SettlPriceType", &T::SettlPriceType, "MDEntryType", &T::MDEntryType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SnapshotFullRefresh_NoMDEntries>);
+static_assert(sizeof(SnapshotFullRefresh_NoMDEntries) == 22, "SnapshotFullRefresh_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a SnapshotFullRefresh in wire order.
+struct SnapshotFullRefreshGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static SnapshotFullRefreshGroups Of(const SnapshotFullRefresh& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<SnapshotFullRefresh_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<SnapshotFullRefresh_NoMDEntries>(Root + SnapshotFullRefresh::BlockLength); }
+};
+
 // SnapshotFullRefreshOrderBook53  (template 53, blockLength 28, semanticType "W")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct SnapshotFullRefreshOrderBook
 {
 	static constexpr uint16_t TemplateId = 53;
@@ -691,11 +1003,36 @@ struct SnapshotFullRefreshOrderBook
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SnapshotFullRefreshOrderBook>);
-static_assert(sizeof(SnapshotFullRefreshOrderBook) == SnapshotFullRefreshOrderBook::BlockLength, "SnapshotFullRefreshOrderBook root block size mismatch");
+static_assert(sizeof(SnapshotFullRefreshOrderBook) == 28, "SnapshotFullRefreshOrderBook block size mismatch");
 
+// group NoMDEntries of SnapshotFullRefreshOrderBook  (entry blockLength 29)
 #pragma pack(push, 1)
+struct SnapshotFullRefreshOrderBook_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 29;
+	uint64_t OrderID;
+	uint64_t MDOrderPriority;
+	Mdp3::PRICE9 MDEntryPx;
+	int32_t MDDisplayQty;
+	Mdp3::MDEntryTypeBook MDEntryType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SnapshotFullRefreshOrderBook_NoMDEntries;
+		static constexpr auto value = glz::object("OrderID", &T::OrderID, "MDOrderPriority", &T::MDOrderPriority, "MDEntryPx", &T::MDEntryPx, "MDDisplayQty", &T::MDDisplayQty, "MDEntryType", &T::MDEntryType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SnapshotFullRefreshOrderBook_NoMDEntries>);
+static_assert(sizeof(SnapshotFullRefreshOrderBook_NoMDEntries) == 29, "SnapshotFullRefreshOrderBook_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a SnapshotFullRefreshOrderBook in wire order.
+struct SnapshotFullRefreshOrderBookGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static SnapshotFullRefreshOrderBookGroups Of(const SnapshotFullRefreshOrderBook& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<SnapshotFullRefreshOrderBook_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<SnapshotFullRefreshOrderBook_NoMDEntries>(Root + SnapshotFullRefreshOrderBook::BlockLength); }
+};
+
 // MDInstrumentDefinitionFuture54  (template 54, blockLength 224, semanticType "d")
-// PHASE 2 trailing after root block: group NoEvents, group NoMDFeedTypes, group NoInstAttrib, group NoLotTypeRules
+#pragma pack(push, 1)
 struct MDInstrumentDefinitionFuture
 {
 	static constexpr uint16_t TemplateId = 54;
@@ -754,11 +1091,81 @@ struct MDInstrumentDefinitionFuture
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDInstrumentDefinitionFuture>);
-static_assert(sizeof(MDInstrumentDefinitionFuture) == MDInstrumentDefinitionFuture::BlockLength, "MDInstrumentDefinitionFuture root block size mismatch");
+static_assert(sizeof(MDInstrumentDefinitionFuture) == 224, "MDInstrumentDefinitionFuture block size mismatch");
 
+// group NoEvents of MDInstrumentDefinitionFuture  (entry blockLength 9)
 #pragma pack(push, 1)
+struct MDInstrumentDefinitionFuture_NoEvents
+{
+	static constexpr uint16_t BlockLength = 9;
+	Mdp3::EventType EventType;
+	uint64_t EventTime;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFuture_NoEvents;
+		static constexpr auto value = glz::object("EventType", &T::EventType, "EventTime", &T::EventTime); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFuture_NoEvents>);
+static_assert(sizeof(MDInstrumentDefinitionFuture_NoEvents) == 9, "MDInstrumentDefinitionFuture_NoEvents block size mismatch");
+
+// group NoMDFeedTypes of MDInstrumentDefinitionFuture  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFuture_NoMDFeedTypes
+{
+	static constexpr uint16_t BlockLength = 4;
+	Tools::StringN<3> MDFeedType;
+	int8_t MarketDepth;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFuture_NoMDFeedTypes;
+		static constexpr auto value = glz::object("MDFeedType", &T::MDFeedType, "MarketDepth", &T::MarketDepth); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFuture_NoMDFeedTypes>);
+static_assert(sizeof(MDInstrumentDefinitionFuture_NoMDFeedTypes) == 4, "MDInstrumentDefinitionFuture_NoMDFeedTypes block size mismatch");
+
+// group NoInstAttrib of MDInstrumentDefinitionFuture  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFuture_NoInstAttrib
+{
+	static constexpr uint16_t BlockLength = 4;
+	Mdp3::InstAttribValue InstAttribValue;
+	static constexpr int8_t InstAttribType = 24;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFuture_NoInstAttrib;
+		static constexpr auto value = glz::object("InstAttribValue", &T::InstAttribValue); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFuture_NoInstAttrib>);
+static_assert(sizeof(MDInstrumentDefinitionFuture_NoInstAttrib) == 4, "MDInstrumentDefinitionFuture_NoInstAttrib block size mismatch");
+
+// group NoLotTypeRules of MDInstrumentDefinitionFuture  (entry blockLength 5)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFuture_NoLotTypeRules
+{
+	static constexpr uint16_t BlockLength = 5;
+	int8_t LotType;
+	Mdp3::DecimalQty MinLotSize;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFuture_NoLotTypeRules;
+		static constexpr auto value = glz::object("LotType", &T::LotType, "MinLotSize", &T::MinLotSize); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFuture_NoLotTypeRules>);
+static_assert(sizeof(MDInstrumentDefinitionFuture_NoLotTypeRules) == 5, "MDInstrumentDefinitionFuture_NoLotTypeRules block size mismatch");
+
+// Walks the repeating groups of a MDInstrumentDefinitionFuture in wire order.
+struct MDInstrumentDefinitionFutureGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDInstrumentDefinitionFutureGroups Of(const MDInstrumentDefinitionFuture& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDInstrumentDefinitionFuture_NoEvents> NoEvents() const { return Sbe::GroupReader<MDInstrumentDefinitionFuture_NoEvents>(Root + MDInstrumentDefinitionFuture::BlockLength); }
+	Sbe::GroupReader<MDInstrumentDefinitionFuture_NoMDFeedTypes> NoMDFeedTypes() const { return Sbe::GroupReader<MDInstrumentDefinitionFuture_NoMDFeedTypes>(NoEvents().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionFuture_NoInstAttrib> NoInstAttrib() const { return Sbe::GroupReader<MDInstrumentDefinitionFuture_NoInstAttrib>(NoMDFeedTypes().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionFuture_NoLotTypeRules> NoLotTypeRules() const { return Sbe::GroupReader<MDInstrumentDefinitionFuture_NoLotTypeRules>(NoInstAttrib().End()); }
+};
+
 // MDInstrumentDefinitionOption55  (template 55, blockLength 221, semanticType "d")
-// PHASE 2 trailing after root block: group NoEvents, group NoMDFeedTypes, group NoInstAttrib, group NoLotTypeRules, group NoUnderlyings, group NoRelatedInstruments
+#pragma pack(push, 1)
 struct MDInstrumentDefinitionOption
 {
 	static constexpr uint16_t TemplateId = 55;
@@ -815,11 +1222,115 @@ struct MDInstrumentDefinitionOption
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDInstrumentDefinitionOption>);
-static_assert(sizeof(MDInstrumentDefinitionOption) == MDInstrumentDefinitionOption::BlockLength, "MDInstrumentDefinitionOption root block size mismatch");
+static_assert(sizeof(MDInstrumentDefinitionOption) == 221, "MDInstrumentDefinitionOption block size mismatch");
 
+// group NoEvents of MDInstrumentDefinitionOption  (entry blockLength 9)
 #pragma pack(push, 1)
+struct MDInstrumentDefinitionOption_NoEvents
+{
+	static constexpr uint16_t BlockLength = 9;
+	Mdp3::EventType EventType;
+	uint64_t EventTime;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionOption_NoEvents;
+		static constexpr auto value = glz::object("EventType", &T::EventType, "EventTime", &T::EventTime); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionOption_NoEvents>);
+static_assert(sizeof(MDInstrumentDefinitionOption_NoEvents) == 9, "MDInstrumentDefinitionOption_NoEvents block size mismatch");
+
+// group NoMDFeedTypes of MDInstrumentDefinitionOption  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionOption_NoMDFeedTypes
+{
+	static constexpr uint16_t BlockLength = 4;
+	Tools::StringN<3> MDFeedType;
+	int8_t MarketDepth;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionOption_NoMDFeedTypes;
+		static constexpr auto value = glz::object("MDFeedType", &T::MDFeedType, "MarketDepth", &T::MarketDepth); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionOption_NoMDFeedTypes>);
+static_assert(sizeof(MDInstrumentDefinitionOption_NoMDFeedTypes) == 4, "MDInstrumentDefinitionOption_NoMDFeedTypes block size mismatch");
+
+// group NoInstAttrib of MDInstrumentDefinitionOption  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionOption_NoInstAttrib
+{
+	static constexpr uint16_t BlockLength = 4;
+	Mdp3::InstAttribValue InstAttribValue;
+	static constexpr int8_t InstAttribType = 24;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionOption_NoInstAttrib;
+		static constexpr auto value = glz::object("InstAttribValue", &T::InstAttribValue); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionOption_NoInstAttrib>);
+static_assert(sizeof(MDInstrumentDefinitionOption_NoInstAttrib) == 4, "MDInstrumentDefinitionOption_NoInstAttrib block size mismatch");
+
+// group NoLotTypeRules of MDInstrumentDefinitionOption  (entry blockLength 5)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionOption_NoLotTypeRules
+{
+	static constexpr uint16_t BlockLength = 5;
+	int8_t LotType;
+	Mdp3::DecimalQty MinLotSize;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionOption_NoLotTypeRules;
+		static constexpr auto value = glz::object("LotType", &T::LotType, "MinLotSize", &T::MinLotSize); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionOption_NoLotTypeRules>);
+static_assert(sizeof(MDInstrumentDefinitionOption_NoLotTypeRules) == 5, "MDInstrumentDefinitionOption_NoLotTypeRules block size mismatch");
+
+// group NoUnderlyings of MDInstrumentDefinitionOption  (entry blockLength 24)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionOption_NoUnderlyings
+{
+	static constexpr uint16_t BlockLength = 24;
+	int32_t UnderlyingSecurityID;
+	Tools::StringN<20> UnderlyingSymbol;
+	static constexpr char UnderlyingSecurityIDSource = '8';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionOption_NoUnderlyings;
+		static constexpr auto value = glz::object("UnderlyingSecurityID", &T::UnderlyingSecurityID, "UnderlyingSymbol", &T::UnderlyingSymbol); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionOption_NoUnderlyings>);
+static_assert(sizeof(MDInstrumentDefinitionOption_NoUnderlyings) == 24, "MDInstrumentDefinitionOption_NoUnderlyings block size mismatch");
+
+// group NoRelatedInstruments of MDInstrumentDefinitionOption  (entry blockLength 24)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionOption_NoRelatedInstruments
+{
+	static constexpr uint16_t BlockLength = 24;
+	int32_t RelatedSecurityID;
+	Tools::StringN<20> RelatedSymbol;
+	static constexpr char RelatedSecurityIDSource = '8';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionOption_NoRelatedInstruments;
+		static constexpr auto value = glz::object("RelatedSecurityID", &T::RelatedSecurityID, "RelatedSymbol", &T::RelatedSymbol); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionOption_NoRelatedInstruments>);
+static_assert(sizeof(MDInstrumentDefinitionOption_NoRelatedInstruments) == 24, "MDInstrumentDefinitionOption_NoRelatedInstruments block size mismatch");
+
+// Walks the repeating groups of a MDInstrumentDefinitionOption in wire order.
+struct MDInstrumentDefinitionOptionGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDInstrumentDefinitionOptionGroups Of(const MDInstrumentDefinitionOption& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDInstrumentDefinitionOption_NoEvents> NoEvents() const { return Sbe::GroupReader<MDInstrumentDefinitionOption_NoEvents>(Root + MDInstrumentDefinitionOption::BlockLength); }
+	Sbe::GroupReader<MDInstrumentDefinitionOption_NoMDFeedTypes> NoMDFeedTypes() const { return Sbe::GroupReader<MDInstrumentDefinitionOption_NoMDFeedTypes>(NoEvents().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionOption_NoInstAttrib> NoInstAttrib() const { return Sbe::GroupReader<MDInstrumentDefinitionOption_NoInstAttrib>(NoMDFeedTypes().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionOption_NoLotTypeRules> NoLotTypeRules() const { return Sbe::GroupReader<MDInstrumentDefinitionOption_NoLotTypeRules>(NoInstAttrib().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionOption_NoUnderlyings> NoUnderlyings() const { return Sbe::GroupReader<MDInstrumentDefinitionOption_NoUnderlyings>(NoLotTypeRules().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionOption_NoRelatedInstruments> NoRelatedInstruments() const { return Sbe::GroupReader<MDInstrumentDefinitionOption_NoRelatedInstruments>(NoUnderlyings().End()); }
+};
+
 // MDInstrumentDefinitionSpread56  (template 56, blockLength 255, semanticType "d")
-// PHASE 2 trailing after root block: group NoEvents, group NoMDFeedTypes, group NoInstAttrib, group NoLotTypeRules, group NoLegs
+#pragma pack(push, 1)
 struct MDInstrumentDefinitionSpread
 {
 	static constexpr uint16_t TemplateId = 56;
@@ -876,11 +1387,101 @@ struct MDInstrumentDefinitionSpread
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDInstrumentDefinitionSpread>);
-static_assert(sizeof(MDInstrumentDefinitionSpread) == MDInstrumentDefinitionSpread::BlockLength, "MDInstrumentDefinitionSpread root block size mismatch");
+static_assert(sizeof(MDInstrumentDefinitionSpread) == 255, "MDInstrumentDefinitionSpread block size mismatch");
 
+// group NoEvents of MDInstrumentDefinitionSpread  (entry blockLength 9)
 #pragma pack(push, 1)
+struct MDInstrumentDefinitionSpread_NoEvents
+{
+	static constexpr uint16_t BlockLength = 9;
+	Mdp3::EventType EventType;
+	uint64_t EventTime;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionSpread_NoEvents;
+		static constexpr auto value = glz::object("EventType", &T::EventType, "EventTime", &T::EventTime); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionSpread_NoEvents>);
+static_assert(sizeof(MDInstrumentDefinitionSpread_NoEvents) == 9, "MDInstrumentDefinitionSpread_NoEvents block size mismatch");
+
+// group NoMDFeedTypes of MDInstrumentDefinitionSpread  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionSpread_NoMDFeedTypes
+{
+	static constexpr uint16_t BlockLength = 4;
+	Tools::StringN<3> MDFeedType;
+	int8_t MarketDepth;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionSpread_NoMDFeedTypes;
+		static constexpr auto value = glz::object("MDFeedType", &T::MDFeedType, "MarketDepth", &T::MarketDepth); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionSpread_NoMDFeedTypes>);
+static_assert(sizeof(MDInstrumentDefinitionSpread_NoMDFeedTypes) == 4, "MDInstrumentDefinitionSpread_NoMDFeedTypes block size mismatch");
+
+// group NoInstAttrib of MDInstrumentDefinitionSpread  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionSpread_NoInstAttrib
+{
+	static constexpr uint16_t BlockLength = 4;
+	Mdp3::InstAttribValue InstAttribValue;
+	static constexpr int8_t InstAttribType = 24;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionSpread_NoInstAttrib;
+		static constexpr auto value = glz::object("InstAttribValue", &T::InstAttribValue); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionSpread_NoInstAttrib>);
+static_assert(sizeof(MDInstrumentDefinitionSpread_NoInstAttrib) == 4, "MDInstrumentDefinitionSpread_NoInstAttrib block size mismatch");
+
+// group NoLotTypeRules of MDInstrumentDefinitionSpread  (entry blockLength 5)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionSpread_NoLotTypeRules
+{
+	static constexpr uint16_t BlockLength = 5;
+	int8_t LotType;
+	Mdp3::DecimalQty MinLotSize;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionSpread_NoLotTypeRules;
+		static constexpr auto value = glz::object("LotType", &T::LotType, "MinLotSize", &T::MinLotSize); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionSpread_NoLotTypeRules>);
+static_assert(sizeof(MDInstrumentDefinitionSpread_NoLotTypeRules) == 5, "MDInstrumentDefinitionSpread_NoLotTypeRules block size mismatch");
+
+// group NoLegs of MDInstrumentDefinitionSpread  (entry blockLength 18)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionSpread_NoLegs
+{
+	static constexpr uint16_t BlockLength = 18;
+	int32_t LegSecurityID;
+	Mdp3::LegSide LegSide;
+	int8_t LegRatioQty;
+	Mdp3::PRICENULL9 LegPrice;
+	Mdp3::DecimalQty LegOptionDelta;
+	static constexpr char LegSecurityIDSource = '8';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionSpread_NoLegs;
+		static constexpr auto value = glz::object("LegSecurityID", &T::LegSecurityID, "LegSide", &T::LegSide, "LegRatioQty", &T::LegRatioQty, "LegPrice", &T::LegPrice, "LegOptionDelta", &T::LegOptionDelta); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionSpread_NoLegs>);
+static_assert(sizeof(MDInstrumentDefinitionSpread_NoLegs) == 18, "MDInstrumentDefinitionSpread_NoLegs block size mismatch");
+
+// Walks the repeating groups of a MDInstrumentDefinitionSpread in wire order.
+struct MDInstrumentDefinitionSpreadGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDInstrumentDefinitionSpreadGroups Of(const MDInstrumentDefinitionSpread& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDInstrumentDefinitionSpread_NoEvents> NoEvents() const { return Sbe::GroupReader<MDInstrumentDefinitionSpread_NoEvents>(Root + MDInstrumentDefinitionSpread::BlockLength); }
+	Sbe::GroupReader<MDInstrumentDefinitionSpread_NoMDFeedTypes> NoMDFeedTypes() const { return Sbe::GroupReader<MDInstrumentDefinitionSpread_NoMDFeedTypes>(NoEvents().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionSpread_NoInstAttrib> NoInstAttrib() const { return Sbe::GroupReader<MDInstrumentDefinitionSpread_NoInstAttrib>(NoMDFeedTypes().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionSpread_NoLotTypeRules> NoLotTypeRules() const { return Sbe::GroupReader<MDInstrumentDefinitionSpread_NoLotTypeRules>(NoInstAttrib().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionSpread_NoLegs> NoLegs() const { return Sbe::GroupReader<MDInstrumentDefinitionSpread_NoLegs>(NoLotTypeRules().End()); }
+};
+
 // MDInstrumentDefinitionFixedIncome57  (template 57, blockLength 338, semanticType "d")
-// PHASE 2 trailing after root block: group NoEvents, group NoMDFeedTypes, group NoInstAttrib, group NoLotTypeRules
+#pragma pack(push, 1)
 struct MDInstrumentDefinitionFixedIncome
 {
 	static constexpr uint16_t TemplateId = 57;
@@ -946,11 +1547,81 @@ struct MDInstrumentDefinitionFixedIncome
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDInstrumentDefinitionFixedIncome>);
-static_assert(sizeof(MDInstrumentDefinitionFixedIncome) == MDInstrumentDefinitionFixedIncome::BlockLength, "MDInstrumentDefinitionFixedIncome root block size mismatch");
+static_assert(sizeof(MDInstrumentDefinitionFixedIncome) == 338, "MDInstrumentDefinitionFixedIncome block size mismatch");
 
+// group NoEvents of MDInstrumentDefinitionFixedIncome  (entry blockLength 9)
 #pragma pack(push, 1)
+struct MDInstrumentDefinitionFixedIncome_NoEvents
+{
+	static constexpr uint16_t BlockLength = 9;
+	Mdp3::EventType EventType;
+	uint64_t EventTime;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFixedIncome_NoEvents;
+		static constexpr auto value = glz::object("EventType", &T::EventType, "EventTime", &T::EventTime); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFixedIncome_NoEvents>);
+static_assert(sizeof(MDInstrumentDefinitionFixedIncome_NoEvents) == 9, "MDInstrumentDefinitionFixedIncome_NoEvents block size mismatch");
+
+// group NoMDFeedTypes of MDInstrumentDefinitionFixedIncome  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFixedIncome_NoMDFeedTypes
+{
+	static constexpr uint16_t BlockLength = 4;
+	Tools::StringN<3> MDFeedType;
+	int8_t MarketDepth;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFixedIncome_NoMDFeedTypes;
+		static constexpr auto value = glz::object("MDFeedType", &T::MDFeedType, "MarketDepth", &T::MarketDepth); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFixedIncome_NoMDFeedTypes>);
+static_assert(sizeof(MDInstrumentDefinitionFixedIncome_NoMDFeedTypes) == 4, "MDInstrumentDefinitionFixedIncome_NoMDFeedTypes block size mismatch");
+
+// group NoInstAttrib of MDInstrumentDefinitionFixedIncome  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFixedIncome_NoInstAttrib
+{
+	static constexpr uint16_t BlockLength = 4;
+	Mdp3::InstAttribValue InstAttribValue;
+	static constexpr int8_t InstAttribType = 24;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFixedIncome_NoInstAttrib;
+		static constexpr auto value = glz::object("InstAttribValue", &T::InstAttribValue); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFixedIncome_NoInstAttrib>);
+static_assert(sizeof(MDInstrumentDefinitionFixedIncome_NoInstAttrib) == 4, "MDInstrumentDefinitionFixedIncome_NoInstAttrib block size mismatch");
+
+// group NoLotTypeRules of MDInstrumentDefinitionFixedIncome  (entry blockLength 5)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFixedIncome_NoLotTypeRules
+{
+	static constexpr uint16_t BlockLength = 5;
+	int8_t LotType;
+	Mdp3::DecimalQty MinLotSize;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFixedIncome_NoLotTypeRules;
+		static constexpr auto value = glz::object("LotType", &T::LotType, "MinLotSize", &T::MinLotSize); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFixedIncome_NoLotTypeRules>);
+static_assert(sizeof(MDInstrumentDefinitionFixedIncome_NoLotTypeRules) == 5, "MDInstrumentDefinitionFixedIncome_NoLotTypeRules block size mismatch");
+
+// Walks the repeating groups of a MDInstrumentDefinitionFixedIncome in wire order.
+struct MDInstrumentDefinitionFixedIncomeGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDInstrumentDefinitionFixedIncomeGroups Of(const MDInstrumentDefinitionFixedIncome& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDInstrumentDefinitionFixedIncome_NoEvents> NoEvents() const { return Sbe::GroupReader<MDInstrumentDefinitionFixedIncome_NoEvents>(Root + MDInstrumentDefinitionFixedIncome::BlockLength); }
+	Sbe::GroupReader<MDInstrumentDefinitionFixedIncome_NoMDFeedTypes> NoMDFeedTypes() const { return Sbe::GroupReader<MDInstrumentDefinitionFixedIncome_NoMDFeedTypes>(NoEvents().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionFixedIncome_NoInstAttrib> NoInstAttrib() const { return Sbe::GroupReader<MDInstrumentDefinitionFixedIncome_NoInstAttrib>(NoMDFeedTypes().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionFixedIncome_NoLotTypeRules> NoLotTypeRules() const { return Sbe::GroupReader<MDInstrumentDefinitionFixedIncome_NoLotTypeRules>(NoInstAttrib().End()); }
+};
+
 // MDInstrumentDefinitionRepo58  (template 58, blockLength 276, semanticType "d")
-// PHASE 2 trailing after root block: group NoEvents, group NoMDFeedTypes, group NoInstAttrib, group NoLotTypeRules, group NoUnderlyings, group NoRelatedInstruments, group NoBrokenDates
+#pragma pack(push, 1)
 struct MDInstrumentDefinitionRepo
 {
 	static constexpr uint16_t TemplateId = 58;
@@ -1008,11 +1679,144 @@ struct MDInstrumentDefinitionRepo
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDInstrumentDefinitionRepo>);
-static_assert(sizeof(MDInstrumentDefinitionRepo) == MDInstrumentDefinitionRepo::BlockLength, "MDInstrumentDefinitionRepo root block size mismatch");
+static_assert(sizeof(MDInstrumentDefinitionRepo) == 276, "MDInstrumentDefinitionRepo block size mismatch");
 
+// group NoEvents of MDInstrumentDefinitionRepo  (entry blockLength 9)
 #pragma pack(push, 1)
+struct MDInstrumentDefinitionRepo_NoEvents
+{
+	static constexpr uint16_t BlockLength = 9;
+	Mdp3::EventType EventType;
+	uint64_t EventTime;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionRepo_NoEvents;
+		static constexpr auto value = glz::object("EventType", &T::EventType, "EventTime", &T::EventTime); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionRepo_NoEvents>);
+static_assert(sizeof(MDInstrumentDefinitionRepo_NoEvents) == 9, "MDInstrumentDefinitionRepo_NoEvents block size mismatch");
+
+// group NoMDFeedTypes of MDInstrumentDefinitionRepo  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionRepo_NoMDFeedTypes
+{
+	static constexpr uint16_t BlockLength = 4;
+	Tools::StringN<3> MDFeedType;
+	int8_t MarketDepth;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionRepo_NoMDFeedTypes;
+		static constexpr auto value = glz::object("MDFeedType", &T::MDFeedType, "MarketDepth", &T::MarketDepth); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionRepo_NoMDFeedTypes>);
+static_assert(sizeof(MDInstrumentDefinitionRepo_NoMDFeedTypes) == 4, "MDInstrumentDefinitionRepo_NoMDFeedTypes block size mismatch");
+
+// group NoInstAttrib of MDInstrumentDefinitionRepo  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionRepo_NoInstAttrib
+{
+	static constexpr uint16_t BlockLength = 4;
+	Mdp3::InstAttribValue InstAttribValue;
+	static constexpr int8_t InstAttribType = 24;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionRepo_NoInstAttrib;
+		static constexpr auto value = glz::object("InstAttribValue", &T::InstAttribValue); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionRepo_NoInstAttrib>);
+static_assert(sizeof(MDInstrumentDefinitionRepo_NoInstAttrib) == 4, "MDInstrumentDefinitionRepo_NoInstAttrib block size mismatch");
+
+// group NoLotTypeRules of MDInstrumentDefinitionRepo  (entry blockLength 5)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionRepo_NoLotTypeRules
+{
+	static constexpr uint16_t BlockLength = 5;
+	int8_t LotType;
+	Mdp3::DecimalQty MinLotSize;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionRepo_NoLotTypeRules;
+		static constexpr auto value = glz::object("LotType", &T::LotType, "MinLotSize", &T::MinLotSize); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionRepo_NoLotTypeRules>);
+static_assert(sizeof(MDInstrumentDefinitionRepo_NoLotTypeRules) == 5, "MDInstrumentDefinitionRepo_NoLotTypeRules block size mismatch");
+
+// group NoUnderlyings of MDInstrumentDefinitionRepo  (entry blockLength 118)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionRepo_NoUnderlyings
+{
+	static constexpr uint16_t BlockLength = 118;
+	Tools::StringN<20> UnderlyingSymbol;
+	int32_t UnderlyingSecurityID;
+	Tools::StringN<12> UnderlyingSecurityAltID;
+	Mdp3::SecurityAltIDSource UnderlyingSecurityAltIDSource;
+	Tools::StringN<35> UnderlyingFinancialInstrumentFullName;
+	Tools::StringN<6> UnderlyingSecurityType;
+	Tools::StringN<2> UnderlyingCountryOfIssue;
+	Tools::StringN<25> UnderlyingIssuer;
+	uint8_t UnderlyingMaxLifeTime;
+	uint16_t UnderlyingMinDaysToMaturity;
+	uint64_t UnderlyingInstrumentGUID;
+	uint16_t UnderlyingMaturityDate;
+	static constexpr char UnderlyingSecurityIDSource = '8';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionRepo_NoUnderlyings;
+		static constexpr auto value = glz::object("UnderlyingSymbol", &T::UnderlyingSymbol, "UnderlyingSecurityID", &T::UnderlyingSecurityID, "UnderlyingSecurityAltID", &T::UnderlyingSecurityAltID, "UnderlyingSecurityAltIDSource", &T::UnderlyingSecurityAltIDSource, "UnderlyingFinancialInstrumentFullName", &T::UnderlyingFinancialInstrumentFullName, "UnderlyingSecurityType", &T::UnderlyingSecurityType, "UnderlyingCountryOfIssue", &T::UnderlyingCountryOfIssue, "UnderlyingIssuer", &T::UnderlyingIssuer, "UnderlyingMaxLifeTime", &T::UnderlyingMaxLifeTime, "UnderlyingMinDaysToMaturity", &T::UnderlyingMinDaysToMaturity, "UnderlyingInstrumentGUID", &T::UnderlyingInstrumentGUID, "UnderlyingMaturityDate", &T::UnderlyingMaturityDate); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionRepo_NoUnderlyings>);
+static_assert(sizeof(MDInstrumentDefinitionRepo_NoUnderlyings) == 118, "MDInstrumentDefinitionRepo_NoUnderlyings block size mismatch");
+
+// group NoRelatedInstruments of MDInstrumentDefinitionRepo  (entry blockLength 32)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionRepo_NoRelatedInstruments
+{
+	static constexpr uint16_t BlockLength = 32;
+	int32_t RelatedSecurityID;
+	Tools::StringN<20> RelatedSymbol;
+	uint64_t RelatedInstrumentGUID;
+	static constexpr char RelatedSecurityIDSource = '8';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionRepo_NoRelatedInstruments;
+		static constexpr auto value = glz::object("RelatedSecurityID", &T::RelatedSecurityID, "RelatedSymbol", &T::RelatedSymbol, "RelatedInstrumentGUID", &T::RelatedInstrumentGUID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionRepo_NoRelatedInstruments>);
+static_assert(sizeof(MDInstrumentDefinitionRepo_NoRelatedInstruments) == 32, "MDInstrumentDefinitionRepo_NoRelatedInstruments block size mismatch");
+
+// group NoBrokenDates of MDInstrumentDefinitionRepo  (entry blockLength 16)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionRepo_NoBrokenDates
+{
+	static constexpr uint16_t BlockLength = 16;
+	uint64_t BrokenDateGUID;
+	int32_t BrokenDateSecurityID;
+	uint16_t BrokenDateStart;
+	uint16_t BrokenDateEnd;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionRepo_NoBrokenDates;
+		static constexpr auto value = glz::object("BrokenDateGUID", &T::BrokenDateGUID, "BrokenDateSecurityID", &T::BrokenDateSecurityID, "BrokenDateStart", &T::BrokenDateStart, "BrokenDateEnd", &T::BrokenDateEnd); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionRepo_NoBrokenDates>);
+static_assert(sizeof(MDInstrumentDefinitionRepo_NoBrokenDates) == 16, "MDInstrumentDefinitionRepo_NoBrokenDates block size mismatch");
+
+// Walks the repeating groups of a MDInstrumentDefinitionRepo in wire order.
+struct MDInstrumentDefinitionRepoGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDInstrumentDefinitionRepoGroups Of(const MDInstrumentDefinitionRepo& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDInstrumentDefinitionRepo_NoEvents> NoEvents() const { return Sbe::GroupReader<MDInstrumentDefinitionRepo_NoEvents>(Root + MDInstrumentDefinitionRepo::BlockLength); }
+	Sbe::GroupReader<MDInstrumentDefinitionRepo_NoMDFeedTypes> NoMDFeedTypes() const { return Sbe::GroupReader<MDInstrumentDefinitionRepo_NoMDFeedTypes>(NoEvents().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionRepo_NoInstAttrib> NoInstAttrib() const { return Sbe::GroupReader<MDInstrumentDefinitionRepo_NoInstAttrib>(NoMDFeedTypes().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionRepo_NoLotTypeRules> NoLotTypeRules() const { return Sbe::GroupReader<MDInstrumentDefinitionRepo_NoLotTypeRules>(NoInstAttrib().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionRepo_NoUnderlyings> NoUnderlyings() const { return Sbe::GroupReader<MDInstrumentDefinitionRepo_NoUnderlyings>(NoLotTypeRules().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionRepo_NoRelatedInstruments> NoRelatedInstruments() const { return Sbe::GroupReader<MDInstrumentDefinitionRepo_NoRelatedInstruments>(NoUnderlyings().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionRepo_NoBrokenDates> NoBrokenDates() const { return Sbe::GroupReader<MDInstrumentDefinitionRepo_NoBrokenDates>(NoRelatedInstruments().End()); }
+};
+
 // SnapshotRefreshTopOrders59  (template 59, blockLength 13, semanticType "W")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct SnapshotRefreshTopOrders
 {
 	static constexpr uint16_t TemplateId = 59;
@@ -1028,11 +1832,36 @@ struct SnapshotRefreshTopOrders
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SnapshotRefreshTopOrders>);
-static_assert(sizeof(SnapshotRefreshTopOrders) == SnapshotRefreshTopOrders::BlockLength, "SnapshotRefreshTopOrders root block size mismatch");
+static_assert(sizeof(SnapshotRefreshTopOrders) == 13, "SnapshotRefreshTopOrders block size mismatch");
 
+// group NoMDEntries of SnapshotRefreshTopOrders  (entry blockLength 29)
 #pragma pack(push, 1)
+struct SnapshotRefreshTopOrders_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 29;
+	uint64_t OrderID;
+	uint64_t MDOrderPriority;
+	Mdp3::PRICE9 MDEntryPx;
+	int32_t MDDisplayQty;
+	Mdp3::MDEntryTypeBook MDEntryType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SnapshotRefreshTopOrders_NoMDEntries;
+		static constexpr auto value = glz::object("OrderID", &T::OrderID, "MDOrderPriority", &T::MDOrderPriority, "MDEntryPx", &T::MDEntryPx, "MDDisplayQty", &T::MDDisplayQty, "MDEntryType", &T::MDEntryType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SnapshotRefreshTopOrders_NoMDEntries>);
+static_assert(sizeof(SnapshotRefreshTopOrders_NoMDEntries) == 29, "SnapshotRefreshTopOrders_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a SnapshotRefreshTopOrders in wire order.
+struct SnapshotRefreshTopOrdersGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static SnapshotRefreshTopOrdersGroups Of(const SnapshotRefreshTopOrders& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<SnapshotRefreshTopOrders_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<SnapshotRefreshTopOrders_NoMDEntries>(Root + SnapshotRefreshTopOrders::BlockLength); }
+};
+
 // SecurityStatusWorkup60  (template 60, blockLength 30, semanticType "f")
-// PHASE 2 trailing after root block: group NoOrderIDEntries
+#pragma pack(push, 1)
 struct SecurityStatusWorkup
 {
 	static constexpr uint16_t TemplateId = 60;
@@ -1054,11 +1883,34 @@ struct SecurityStatusWorkup
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SecurityStatusWorkup>);
-static_assert(sizeof(SecurityStatusWorkup) == SecurityStatusWorkup::BlockLength, "SecurityStatusWorkup root block size mismatch");
+static_assert(sizeof(SecurityStatusWorkup) == 30, "SecurityStatusWorkup block size mismatch");
 
+// group NoOrderIDEntries of SecurityStatusWorkup  (entry blockLength 10)
 #pragma pack(push, 1)
+struct SecurityStatusWorkup_NoOrderIDEntries
+{
+	static constexpr uint16_t BlockLength = 10;
+	uint64_t OrderID;
+	Mdp3::Side Side;
+	Mdp3::AggressorFlag AggressorIndicator;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SecurityStatusWorkup_NoOrderIDEntries;
+		static constexpr auto value = glz::object("OrderID", &T::OrderID, "Side", &T::Side, "AggressorIndicator", &T::AggressorIndicator); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SecurityStatusWorkup_NoOrderIDEntries>);
+static_assert(sizeof(SecurityStatusWorkup_NoOrderIDEntries) == 10, "SecurityStatusWorkup_NoOrderIDEntries block size mismatch");
+
+// Walks the repeating groups of a SecurityStatusWorkup in wire order.
+struct SecurityStatusWorkupGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static SecurityStatusWorkupGroups Of(const SecurityStatusWorkup& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<SecurityStatusWorkup_NoOrderIDEntries> NoOrderIDEntries() const { return Sbe::GroupReader<SecurityStatusWorkup_NoOrderIDEntries>(Root + SecurityStatusWorkup::BlockLength); }
+};
+
 // SnapshotFullRefreshTCP61  (template 61, blockLength 37, semanticType "W")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct SnapshotFullRefreshTCP
 {
 	static constexpr uint16_t TemplateId = 61;
@@ -1077,11 +1929,40 @@ struct SnapshotFullRefreshTCP
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SnapshotFullRefreshTCP>);
-static_assert(sizeof(SnapshotFullRefreshTCP) == SnapshotFullRefreshTCP::BlockLength, "SnapshotFullRefreshTCP root block size mismatch");
+static_assert(sizeof(SnapshotFullRefreshTCP) == 37, "SnapshotFullRefreshTCP block size mismatch");
 
+// group NoMDEntries of SnapshotFullRefreshTCP  (entry blockLength 26)
 #pragma pack(push, 1)
+struct SnapshotFullRefreshTCP_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 26;
+	Mdp3::PRICENULL9 MDEntryPx;
+	int32_t MDEntrySize;
+	int32_t TradeableSize;
+	int32_t NumberOfOrders;
+	int8_t MDPriceLevel;
+	Mdp3::OpenCloseSettlFlag OpenCloseSettlFlag;
+	Mdp3::MDEntryType MDEntryType;
+	uint16_t TradingReferenceDate;
+	Mdp3::SettlPriceType SettlPriceType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SnapshotFullRefreshTCP_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "TradeableSize", &T::TradeableSize, "NumberOfOrders", &T::NumberOfOrders, "MDPriceLevel", &T::MDPriceLevel, "OpenCloseSettlFlag", &T::OpenCloseSettlFlag, "MDEntryType", &T::MDEntryType, "TradingReferenceDate", &T::TradingReferenceDate, "SettlPriceType", &T::SettlPriceType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SnapshotFullRefreshTCP_NoMDEntries>);
+static_assert(sizeof(SnapshotFullRefreshTCP_NoMDEntries) == 26, "SnapshotFullRefreshTCP_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a SnapshotFullRefreshTCP in wire order.
+struct SnapshotFullRefreshTCPGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static SnapshotFullRefreshTCPGroups Of(const SnapshotFullRefreshTCP& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<SnapshotFullRefreshTCP_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<SnapshotFullRefreshTCP_NoMDEntries>(Root + SnapshotFullRefreshTCP::BlockLength); }
+};
+
 // CollateralMarketValue62  (template 62, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct CollateralMarketValue
 {
 	static constexpr uint16_t TemplateId = 62;
@@ -1097,11 +1978,38 @@ struct CollateralMarketValue
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<CollateralMarketValue>);
-static_assert(sizeof(CollateralMarketValue) == CollateralMarketValue::BlockLength, "CollateralMarketValue root block size mismatch");
+static_assert(sizeof(CollateralMarketValue) == 11, "CollateralMarketValue block size mismatch");
 
+// group NoMDEntries of CollateralMarketValue  (entry blockLength 40)
 #pragma pack(push, 1)
+struct CollateralMarketValue_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 40;
+	Tools::StringN<12> UnderlyingSecurityAltID;
+	Mdp3::SecurityAltIDSource UnderlyingSecurityAltIDSource;
+	Mdp3::PRICE9 CollateralMarketPrice;
+	Mdp3::PRICE9 DirtyPrice;
+	uint64_t UnderlyingInstrumentGUID;
+	Mdp3::PriceSource MDStreamID;
+	uint8_t _pad0[2] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = CollateralMarketValue_NoMDEntries;
+		static constexpr auto value = glz::object("UnderlyingSecurityAltID", &T::UnderlyingSecurityAltID, "UnderlyingSecurityAltIDSource", &T::UnderlyingSecurityAltIDSource, "CollateralMarketPrice", &T::CollateralMarketPrice, "DirtyPrice", &T::DirtyPrice, "UnderlyingInstrumentGUID", &T::UnderlyingInstrumentGUID, "MDStreamID", &T::MDStreamID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<CollateralMarketValue_NoMDEntries>);
+static_assert(sizeof(CollateralMarketValue_NoMDEntries) == 40, "CollateralMarketValue_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a CollateralMarketValue in wire order.
+struct CollateralMarketValueGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static CollateralMarketValueGroups Of(const CollateralMarketValue& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<CollateralMarketValue_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<CollateralMarketValue_NoMDEntries>(Root + CollateralMarketValue::BlockLength); }
+};
+
 // MDInstrumentDefinitionFX63  (template 63, blockLength 337, semanticType "d")
-// PHASE 2 trailing after root block: group NoEvents, group NoMDFeedTypes, group NoInstAttrib, group NoLotTypeRules, group NoTradingSessions
+#pragma pack(push, 1)
 struct MDInstrumentDefinitionFX
 {
 	static constexpr uint16_t TemplateId = 63;
@@ -1162,11 +2070,100 @@ struct MDInstrumentDefinitionFX
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDInstrumentDefinitionFX>);
-static_assert(sizeof(MDInstrumentDefinitionFX) == MDInstrumentDefinitionFX::BlockLength, "MDInstrumentDefinitionFX root block size mismatch");
+static_assert(sizeof(MDInstrumentDefinitionFX) == 337, "MDInstrumentDefinitionFX block size mismatch");
 
+// group NoEvents of MDInstrumentDefinitionFX  (entry blockLength 9)
 #pragma pack(push, 1)
+struct MDInstrumentDefinitionFX_NoEvents
+{
+	static constexpr uint16_t BlockLength = 9;
+	Mdp3::EventType EventType;
+	uint64_t EventTime;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFX_NoEvents;
+		static constexpr auto value = glz::object("EventType", &T::EventType, "EventTime", &T::EventTime); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFX_NoEvents>);
+static_assert(sizeof(MDInstrumentDefinitionFX_NoEvents) == 9, "MDInstrumentDefinitionFX_NoEvents block size mismatch");
+
+// group NoMDFeedTypes of MDInstrumentDefinitionFX  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFX_NoMDFeedTypes
+{
+	static constexpr uint16_t BlockLength = 4;
+	Tools::StringN<3> MDFeedType;
+	int8_t MarketDepth;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFX_NoMDFeedTypes;
+		static constexpr auto value = glz::object("MDFeedType", &T::MDFeedType, "MarketDepth", &T::MarketDepth); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFX_NoMDFeedTypes>);
+static_assert(sizeof(MDInstrumentDefinitionFX_NoMDFeedTypes) == 4, "MDInstrumentDefinitionFX_NoMDFeedTypes block size mismatch");
+
+// group NoInstAttrib of MDInstrumentDefinitionFX  (entry blockLength 4)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFX_NoInstAttrib
+{
+	static constexpr uint16_t BlockLength = 4;
+	Mdp3::InstAttribValue InstAttribValue;
+	static constexpr int8_t InstAttribType = 24;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFX_NoInstAttrib;
+		static constexpr auto value = glz::object("InstAttribValue", &T::InstAttribValue); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFX_NoInstAttrib>);
+static_assert(sizeof(MDInstrumentDefinitionFX_NoInstAttrib) == 4, "MDInstrumentDefinitionFX_NoInstAttrib block size mismatch");
+
+// group NoLotTypeRules of MDInstrumentDefinitionFX  (entry blockLength 9)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFX_NoLotTypeRules
+{
+	static constexpr uint16_t BlockLength = 9;
+	int8_t LotType;
+	uint64_t MinLotSize;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFX_NoLotTypeRules;
+		static constexpr auto value = glz::object("LotType", &T::LotType, "MinLotSize", &T::MinLotSize); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFX_NoLotTypeRules>);
+static_assert(sizeof(MDInstrumentDefinitionFX_NoLotTypeRules) == 9, "MDInstrumentDefinitionFX_NoLotTypeRules block size mismatch");
+
+// group NoTradingSessions of MDInstrumentDefinitionFX  (entry blockLength 18)
+#pragma pack(push, 1)
+struct MDInstrumentDefinitionFX_NoTradingSessions
+{
+	static constexpr uint16_t BlockLength = 18;
+	uint16_t TradeDate;
+	uint16_t SettlDate;
+	uint16_t MaturityDate;
+	Tools::StringN<12> SecurityAltID;
+	static constexpr uint8_t SecurityAltIDSource = 4;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDInstrumentDefinitionFX_NoTradingSessions;
+		static constexpr auto value = glz::object("TradeDate", &T::TradeDate, "SettlDate", &T::SettlDate, "MaturityDate", &T::MaturityDate, "SecurityAltID", &T::SecurityAltID); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDInstrumentDefinitionFX_NoTradingSessions>);
+static_assert(sizeof(MDInstrumentDefinitionFX_NoTradingSessions) == 18, "MDInstrumentDefinitionFX_NoTradingSessions block size mismatch");
+
+// Walks the repeating groups of a MDInstrumentDefinitionFX in wire order.
+struct MDInstrumentDefinitionFXGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDInstrumentDefinitionFXGroups Of(const MDInstrumentDefinitionFX& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDInstrumentDefinitionFX_NoEvents> NoEvents() const { return Sbe::GroupReader<MDInstrumentDefinitionFX_NoEvents>(Root + MDInstrumentDefinitionFX::BlockLength); }
+	Sbe::GroupReader<MDInstrumentDefinitionFX_NoMDFeedTypes> NoMDFeedTypes() const { return Sbe::GroupReader<MDInstrumentDefinitionFX_NoMDFeedTypes>(NoEvents().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionFX_NoInstAttrib> NoInstAttrib() const { return Sbe::GroupReader<MDInstrumentDefinitionFX_NoInstAttrib>(NoMDFeedTypes().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionFX_NoLotTypeRules> NoLotTypeRules() const { return Sbe::GroupReader<MDInstrumentDefinitionFX_NoLotTypeRules>(NoInstAttrib().End()); }
+	Sbe::GroupReader<MDInstrumentDefinitionFX_NoTradingSessions> NoTradingSessions() const { return Sbe::GroupReader<MDInstrumentDefinitionFX_NoTradingSessions>(NoLotTypeRules().End()); }
+};
+
 // MDIncrementalRefreshBookLongQty64  (template 64, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries, group NoOrderIDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshBookLongQty
 {
 	static constexpr uint16_t TemplateId = 64;
@@ -1182,11 +2179,60 @@ struct MDIncrementalRefreshBookLongQty
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshBookLongQty>);
-static_assert(sizeof(MDIncrementalRefreshBookLongQty) == MDIncrementalRefreshBookLongQty::BlockLength, "MDIncrementalRefreshBookLongQty root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshBookLongQty) == 11, "MDIncrementalRefreshBookLongQty block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshBookLongQty  (entry blockLength 32)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshBookLongQty_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 32;
+	Mdp3::PRICENULL9 MDEntryPx;
+	uint64_t MDEntrySize;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	int32_t NumberOfOrders;
+	uint8_t MDPriceLevel;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	Mdp3::MDEntryTypeBook MDEntryType;
+	uint8_t _pad0[1] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshBookLongQty_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq, "NumberOfOrders", &T::NumberOfOrders, "MDPriceLevel", &T::MDPriceLevel, "MDUpdateAction", &T::MDUpdateAction, "MDEntryType", &T::MDEntryType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshBookLongQty_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshBookLongQty_NoMDEntries) == 32, "MDIncrementalRefreshBookLongQty_NoMDEntries block size mismatch");
+
+// group NoOrderIDEntries of MDIncrementalRefreshBookLongQty  (entry blockLength 24)
+#pragma pack(push, 1)
+struct MDIncrementalRefreshBookLongQty_NoOrderIDEntries
+{
+	static constexpr uint16_t BlockLength = 24;
+	uint64_t OrderID;
+	uint64_t MDOrderPriority;
+	int32_t MDDisplayQty;
+	uint8_t ReferenceID;
+	Mdp3::OrderUpdateAction OrderUpdateAction;
+	uint8_t _pad0[2] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshBookLongQty_NoOrderIDEntries;
+		static constexpr auto value = glz::object("OrderID", &T::OrderID, "MDOrderPriority", &T::MDOrderPriority, "MDDisplayQty", &T::MDDisplayQty, "ReferenceID", &T::ReferenceID, "OrderUpdateAction", &T::OrderUpdateAction); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshBookLongQty_NoOrderIDEntries>);
+static_assert(sizeof(MDIncrementalRefreshBookLongQty_NoOrderIDEntries) == 24, "MDIncrementalRefreshBookLongQty_NoOrderIDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshBookLongQty in wire order.
+struct MDIncrementalRefreshBookLongQtyGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshBookLongQtyGroups Of(const MDIncrementalRefreshBookLongQty& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshBookLongQty_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshBookLongQty_NoMDEntries>(Root + MDIncrementalRefreshBookLongQty::BlockLength); }
+	Sbe::GroupReader<MDIncrementalRefreshBookLongQty_NoOrderIDEntries> NoOrderIDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshBookLongQty_NoOrderIDEntries>(NoMDEntries().End()); }
+};
+
 // MDIncrementalRefreshTradeSummaryLongQty65  (template 65, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries, group NoOrderIDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshTradeSummaryLongQty
 {
 	static constexpr uint16_t TemplateId = 65;
@@ -1202,11 +2248,58 @@ struct MDIncrementalRefreshTradeSummaryLongQty
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshTradeSummaryLongQty>);
-static_assert(sizeof(MDIncrementalRefreshTradeSummaryLongQty) == MDIncrementalRefreshTradeSummaryLongQty::BlockLength, "MDIncrementalRefreshTradeSummaryLongQty root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshTradeSummaryLongQty) == 11, "MDIncrementalRefreshTradeSummaryLongQty block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshTradeSummaryLongQty  (entry blockLength 40)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshTradeSummaryLongQty_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 40;
+	Mdp3::PRICE9 MDEntryPx;
+	uint64_t MDEntrySize;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	int32_t NumberOfOrders;
+	uint32_t MDTradeEntryID;
+	Mdp3::AggressorSide AggressorSide;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	uint8_t _pad0[6] = {};
+	static constexpr char MDEntryType = '2';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshTradeSummaryLongQty_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq, "NumberOfOrders", &T::NumberOfOrders, "MDTradeEntryID", &T::MDTradeEntryID, "AggressorSide", &T::AggressorSide, "MDUpdateAction", &T::MDUpdateAction); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshTradeSummaryLongQty_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshTradeSummaryLongQty_NoMDEntries) == 40, "MDIncrementalRefreshTradeSummaryLongQty_NoMDEntries block size mismatch");
+
+// group NoOrderIDEntries of MDIncrementalRefreshTradeSummaryLongQty  (entry blockLength 16)
+#pragma pack(push, 1)
+struct MDIncrementalRefreshTradeSummaryLongQty_NoOrderIDEntries
+{
+	static constexpr uint16_t BlockLength = 16;
+	uint64_t OrderID;
+	int32_t LastQty;
+	uint8_t _pad0[4] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshTradeSummaryLongQty_NoOrderIDEntries;
+		static constexpr auto value = glz::object("OrderID", &T::OrderID, "LastQty", &T::LastQty); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshTradeSummaryLongQty_NoOrderIDEntries>);
+static_assert(sizeof(MDIncrementalRefreshTradeSummaryLongQty_NoOrderIDEntries) == 16, "MDIncrementalRefreshTradeSummaryLongQty_NoOrderIDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshTradeSummaryLongQty in wire order.
+struct MDIncrementalRefreshTradeSummaryLongQtyGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshTradeSummaryLongQtyGroups Of(const MDIncrementalRefreshTradeSummaryLongQty& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshTradeSummaryLongQty_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshTradeSummaryLongQty_NoMDEntries>(Root + MDIncrementalRefreshTradeSummaryLongQty::BlockLength); }
+	Sbe::GroupReader<MDIncrementalRefreshTradeSummaryLongQty_NoOrderIDEntries> NoOrderIDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshTradeSummaryLongQty_NoOrderIDEntries>(NoMDEntries().End()); }
+};
+
 // MDIncrementalRefreshVolumeLongQty66  (template 66, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshVolumeLongQty
 {
 	static constexpr uint16_t TemplateId = 66;
@@ -1222,11 +2315,37 @@ struct MDIncrementalRefreshVolumeLongQty
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshVolumeLongQty>);
-static_assert(sizeof(MDIncrementalRefreshVolumeLongQty) == MDIncrementalRefreshVolumeLongQty::BlockLength, "MDIncrementalRefreshVolumeLongQty root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshVolumeLongQty) == 11, "MDIncrementalRefreshVolumeLongQty block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshVolumeLongQty  (entry blockLength 24)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshVolumeLongQty_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 24;
+	uint64_t MDEntrySize;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	uint8_t _pad0[7] = {};
+	static constexpr char MDEntryType = 'e';
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshVolumeLongQty_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntrySize", &T::MDEntrySize, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq, "MDUpdateAction", &T::MDUpdateAction); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshVolumeLongQty_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshVolumeLongQty_NoMDEntries) == 24, "MDIncrementalRefreshVolumeLongQty_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshVolumeLongQty in wire order.
+struct MDIncrementalRefreshVolumeLongQtyGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshVolumeLongQtyGroups Of(const MDIncrementalRefreshVolumeLongQty& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshVolumeLongQty_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshVolumeLongQty_NoMDEntries>(Root + MDIncrementalRefreshVolumeLongQty::BlockLength); }
+};
+
 // MDIncrementalRefreshSessionStatisticsLongQty67  (template 67, blockLength 11, semanticType "X")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct MDIncrementalRefreshSessionStatisticsLongQty
 {
 	static constexpr uint16_t TemplateId = 67;
@@ -1242,11 +2361,39 @@ struct MDIncrementalRefreshSessionStatisticsLongQty
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<MDIncrementalRefreshSessionStatisticsLongQty>);
-static_assert(sizeof(MDIncrementalRefreshSessionStatisticsLongQty) == MDIncrementalRefreshSessionStatisticsLongQty::BlockLength, "MDIncrementalRefreshSessionStatisticsLongQty root block size mismatch");
+static_assert(sizeof(MDIncrementalRefreshSessionStatisticsLongQty) == 11, "MDIncrementalRefreshSessionStatisticsLongQty block size mismatch");
 
+// group NoMDEntries of MDIncrementalRefreshSessionStatisticsLongQty  (entry blockLength 32)
 #pragma pack(push, 1)
+struct MDIncrementalRefreshSessionStatisticsLongQty_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 32;
+	Mdp3::PRICE9 MDEntryPx;
+	uint64_t MDEntrySize;
+	int32_t SecurityID;
+	uint32_t RptSeq;
+	Mdp3::OpenCloseSettlFlag OpenCloseSettlFlag;
+	Mdp3::MDUpdateAction MDUpdateAction;
+	Mdp3::MDEntryTypeStatistics MDEntryType;
+	uint8_t _pad0[5] = {};
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = MDIncrementalRefreshSessionStatisticsLongQty_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "SecurityID", &T::SecurityID, "RptSeq", &T::RptSeq, "OpenCloseSettlFlag", &T::OpenCloseSettlFlag, "MDUpdateAction", &T::MDUpdateAction, "MDEntryType", &T::MDEntryType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<MDIncrementalRefreshSessionStatisticsLongQty_NoMDEntries>);
+static_assert(sizeof(MDIncrementalRefreshSessionStatisticsLongQty_NoMDEntries) == 32, "MDIncrementalRefreshSessionStatisticsLongQty_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a MDIncrementalRefreshSessionStatisticsLongQty in wire order.
+struct MDIncrementalRefreshSessionStatisticsLongQtyGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static MDIncrementalRefreshSessionStatisticsLongQtyGroups Of(const MDIncrementalRefreshSessionStatisticsLongQty& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<MDIncrementalRefreshSessionStatisticsLongQty_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<MDIncrementalRefreshSessionStatisticsLongQty_NoMDEntries>(Root + MDIncrementalRefreshSessionStatisticsLongQty::BlockLength); }
+};
+
 // SnapshotFullRefreshTCPLongQty68  (template 68, blockLength 37, semanticType "W")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct SnapshotFullRefreshTCPLongQty
 {
 	static constexpr uint16_t TemplateId = 68;
@@ -1265,11 +2412,37 @@ struct SnapshotFullRefreshTCPLongQty
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SnapshotFullRefreshTCPLongQty>);
-static_assert(sizeof(SnapshotFullRefreshTCPLongQty) == SnapshotFullRefreshTCPLongQty::BlockLength, "SnapshotFullRefreshTCPLongQty root block size mismatch");
+static_assert(sizeof(SnapshotFullRefreshTCPLongQty) == 37, "SnapshotFullRefreshTCPLongQty block size mismatch");
 
+// group NoMDEntries of SnapshotFullRefreshTCPLongQty  (entry blockLength 23)
 #pragma pack(push, 1)
+struct SnapshotFullRefreshTCPLongQty_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 23;
+	Mdp3::PRICENULL9 MDEntryPx;
+	uint64_t MDEntrySize;
+	int32_t NumberOfOrders;
+	uint8_t MDPriceLevel;
+	Mdp3::OpenCloseSettlFlag OpenCloseSettlFlag;
+	Mdp3::MDEntryType MDEntryType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SnapshotFullRefreshTCPLongQty_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "NumberOfOrders", &T::NumberOfOrders, "MDPriceLevel", &T::MDPriceLevel, "OpenCloseSettlFlag", &T::OpenCloseSettlFlag, "MDEntryType", &T::MDEntryType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SnapshotFullRefreshTCPLongQty_NoMDEntries>);
+static_assert(sizeof(SnapshotFullRefreshTCPLongQty_NoMDEntries) == 23, "SnapshotFullRefreshTCPLongQty_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a SnapshotFullRefreshTCPLongQty in wire order.
+struct SnapshotFullRefreshTCPLongQtyGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static SnapshotFullRefreshTCPLongQtyGroups Of(const SnapshotFullRefreshTCPLongQty& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<SnapshotFullRefreshTCPLongQty_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<SnapshotFullRefreshTCPLongQty_NoMDEntries>(Root + SnapshotFullRefreshTCPLongQty::BlockLength); }
+};
+
 // SnapshotFullRefreshLongQty69  (template 69, blockLength 59, semanticType "W")
-// PHASE 2 trailing after root block: group NoMDEntries
+#pragma pack(push, 1)
 struct SnapshotFullRefreshLongQty
 {
 	static constexpr uint16_t TemplateId = 69;
@@ -1293,7 +2466,34 @@ struct SnapshotFullRefreshLongQty
 };
 #pragma pack(pop)
 static_assert(Tools::PlainOldData<SnapshotFullRefreshLongQty>);
-static_assert(sizeof(SnapshotFullRefreshLongQty) == SnapshotFullRefreshLongQty::BlockLength, "SnapshotFullRefreshLongQty root block size mismatch");
+static_assert(sizeof(SnapshotFullRefreshLongQty) == 59, "SnapshotFullRefreshLongQty block size mismatch");
+
+// group NoMDEntries of SnapshotFullRefreshLongQty  (entry blockLength 23)
+#pragma pack(push, 1)
+struct SnapshotFullRefreshLongQty_NoMDEntries
+{
+	static constexpr uint16_t BlockLength = 23;
+	Mdp3::PRICENULL9 MDEntryPx;
+	uint64_t MDEntrySize;
+	int32_t NumberOfOrders;
+	uint8_t MDPriceLevel;
+	Mdp3::OpenCloseSettlFlag OpenCloseSettlFlag;
+	Mdp3::MDEntryType MDEntryType;
+	std::string ToString() const { return Tools::Json::Serialize(*this); }
+	struct glaze { using T = SnapshotFullRefreshLongQty_NoMDEntries;
+		static constexpr auto value = glz::object("MDEntryPx", &T::MDEntryPx, "MDEntrySize", &T::MDEntrySize, "NumberOfOrders", &T::NumberOfOrders, "MDPriceLevel", &T::MDPriceLevel, "OpenCloseSettlFlag", &T::OpenCloseSettlFlag, "MDEntryType", &T::MDEntryType); };
+};
+#pragma pack(pop)
+static_assert(Tools::PlainOldData<SnapshotFullRefreshLongQty_NoMDEntries>);
+static_assert(sizeof(SnapshotFullRefreshLongQty_NoMDEntries) == 23, "SnapshotFullRefreshLongQty_NoMDEntries block size mismatch");
+
+// Walks the repeating groups of a SnapshotFullRefreshLongQty in wire order.
+struct SnapshotFullRefreshLongQtyGroups
+{
+	const uint8_t* Root;   // start of the message body (the root block)
+	static SnapshotFullRefreshLongQtyGroups Of(const SnapshotFullRefreshLongQty& message) { return {reinterpret_cast<const uint8_t*>(&message)}; }
+	Sbe::GroupReader<SnapshotFullRefreshLongQty_NoMDEntries> NoMDEntries() const { return Sbe::GroupReader<SnapshotFullRefreshLongQty_NoMDEntries>(Root + SnapshotFullRefreshLongQty::BlockLength); }
+};
 
 // Template id -> message, for RX dispatch.
 enum class Template : uint16_t
@@ -1371,42 +2571,1065 @@ inline std::string_view ToObjectType(uint16_t templateId)
 	}
 }
 
+// ChannelReset: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_ChannelReset(const void* body)
+{
+	const ChannelReset& message = *reinterpret_cast<const ChannelReset*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = ChannelResetGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshVolume: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshVolume(const void* body)
+{
+	const MDIncrementalRefreshVolume& message = *reinterpret_cast<const MDIncrementalRefreshVolume*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshVolumeGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// QuoteRequest: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_QuoteRequest(const void* body)
+{
+	const QuoteRequest& message = *reinterpret_cast<const QuoteRequest*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = QuoteRequestGroups::Of(message);
+	line += needComma ? ",\"NoRelatedSym\":[" : "\"NoRelatedSym\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoRelatedSym())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshBook: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshBook(const void* body)
+{
+	const MDIncrementalRefreshBook& message = *reinterpret_cast<const MDIncrementalRefreshBook*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshBookGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderIDEntries\":[" : "\"NoOrderIDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderIDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshOrderBook: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshOrderBook(const void* body)
+{
+	const MDIncrementalRefreshOrderBook& message = *reinterpret_cast<const MDIncrementalRefreshOrderBook*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshOrderBookGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshTradeSummary: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshTradeSummary(const void* body)
+{
+	const MDIncrementalRefreshTradeSummary& message = *reinterpret_cast<const MDIncrementalRefreshTradeSummary*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshTradeSummaryGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderIDEntries\":[" : "\"NoOrderIDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderIDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshDailyStatistics: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshDailyStatistics(const void* body)
+{
+	const MDIncrementalRefreshDailyStatistics& message = *reinterpret_cast<const MDIncrementalRefreshDailyStatistics*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshDailyStatisticsGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshLimitsBanding: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshLimitsBanding(const void* body)
+{
+	const MDIncrementalRefreshLimitsBanding& message = *reinterpret_cast<const MDIncrementalRefreshLimitsBanding*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshLimitsBandingGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshSessionStatistics: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshSessionStatistics(const void* body)
+{
+	const MDIncrementalRefreshSessionStatistics& message = *reinterpret_cast<const MDIncrementalRefreshSessionStatistics*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshSessionStatisticsGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// SnapshotFullRefresh: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_SnapshotFullRefresh(const void* body)
+{
+	const SnapshotFullRefresh& message = *reinterpret_cast<const SnapshotFullRefresh*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = SnapshotFullRefreshGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// SnapshotFullRefreshOrderBook: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_SnapshotFullRefreshOrderBook(const void* body)
+{
+	const SnapshotFullRefreshOrderBook& message = *reinterpret_cast<const SnapshotFullRefreshOrderBook*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = SnapshotFullRefreshOrderBookGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDInstrumentDefinitionFuture: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDInstrumentDefinitionFuture(const void* body)
+{
+	const MDInstrumentDefinitionFuture& message = *reinterpret_cast<const MDInstrumentDefinitionFuture*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDInstrumentDefinitionFutureGroups::Of(message);
+	line += needComma ? ",\"NoEvents\":[" : "\"NoEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoMDFeedTypes\":[" : "\"NoMDFeedTypes\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDFeedTypes())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoInstAttrib\":[" : "\"NoInstAttrib\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoInstAttrib())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoLotTypeRules\":[" : "\"NoLotTypeRules\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLotTypeRules())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDInstrumentDefinitionOption: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDInstrumentDefinitionOption(const void* body)
+{
+	const MDInstrumentDefinitionOption& message = *reinterpret_cast<const MDInstrumentDefinitionOption*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDInstrumentDefinitionOptionGroups::Of(message);
+	line += needComma ? ",\"NoEvents\":[" : "\"NoEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoMDFeedTypes\":[" : "\"NoMDFeedTypes\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDFeedTypes())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoInstAttrib\":[" : "\"NoInstAttrib\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoInstAttrib())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoLotTypeRules\":[" : "\"NoLotTypeRules\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLotTypeRules())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoUnderlyings\":[" : "\"NoUnderlyings\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoUnderlyings())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoRelatedInstruments\":[" : "\"NoRelatedInstruments\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoRelatedInstruments())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDInstrumentDefinitionSpread: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDInstrumentDefinitionSpread(const void* body)
+{
+	const MDInstrumentDefinitionSpread& message = *reinterpret_cast<const MDInstrumentDefinitionSpread*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDInstrumentDefinitionSpreadGroups::Of(message);
+	line += needComma ? ",\"NoEvents\":[" : "\"NoEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoMDFeedTypes\":[" : "\"NoMDFeedTypes\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDFeedTypes())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoInstAttrib\":[" : "\"NoInstAttrib\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoInstAttrib())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoLotTypeRules\":[" : "\"NoLotTypeRules\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLotTypeRules())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoLegs\":[" : "\"NoLegs\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLegs())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDInstrumentDefinitionFixedIncome: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDInstrumentDefinitionFixedIncome(const void* body)
+{
+	const MDInstrumentDefinitionFixedIncome& message = *reinterpret_cast<const MDInstrumentDefinitionFixedIncome*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDInstrumentDefinitionFixedIncomeGroups::Of(message);
+	line += needComma ? ",\"NoEvents\":[" : "\"NoEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoMDFeedTypes\":[" : "\"NoMDFeedTypes\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDFeedTypes())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoInstAttrib\":[" : "\"NoInstAttrib\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoInstAttrib())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoLotTypeRules\":[" : "\"NoLotTypeRules\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLotTypeRules())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDInstrumentDefinitionRepo: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDInstrumentDefinitionRepo(const void* body)
+{
+	const MDInstrumentDefinitionRepo& message = *reinterpret_cast<const MDInstrumentDefinitionRepo*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDInstrumentDefinitionRepoGroups::Of(message);
+	line += needComma ? ",\"NoEvents\":[" : "\"NoEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoMDFeedTypes\":[" : "\"NoMDFeedTypes\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDFeedTypes())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoInstAttrib\":[" : "\"NoInstAttrib\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoInstAttrib())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoLotTypeRules\":[" : "\"NoLotTypeRules\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLotTypeRules())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoUnderlyings\":[" : "\"NoUnderlyings\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoUnderlyings())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoRelatedInstruments\":[" : "\"NoRelatedInstruments\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoRelatedInstruments())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoBrokenDates\":[" : "\"NoBrokenDates\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoBrokenDates())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// SnapshotRefreshTopOrders: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_SnapshotRefreshTopOrders(const void* body)
+{
+	const SnapshotRefreshTopOrders& message = *reinterpret_cast<const SnapshotRefreshTopOrders*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = SnapshotRefreshTopOrdersGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// SecurityStatusWorkup: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_SecurityStatusWorkup(const void* body)
+{
+	const SecurityStatusWorkup& message = *reinterpret_cast<const SecurityStatusWorkup*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = SecurityStatusWorkupGroups::Of(message);
+	line += needComma ? ",\"NoOrderIDEntries\":[" : "\"NoOrderIDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderIDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// SnapshotFullRefreshTCP: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_SnapshotFullRefreshTCP(const void* body)
+{
+	const SnapshotFullRefreshTCP& message = *reinterpret_cast<const SnapshotFullRefreshTCP*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = SnapshotFullRefreshTCPGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// CollateralMarketValue: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_CollateralMarketValue(const void* body)
+{
+	const CollateralMarketValue& message = *reinterpret_cast<const CollateralMarketValue*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = CollateralMarketValueGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDInstrumentDefinitionFX: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDInstrumentDefinitionFX(const void* body)
+{
+	const MDInstrumentDefinitionFX& message = *reinterpret_cast<const MDInstrumentDefinitionFX*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDInstrumentDefinitionFXGroups::Of(message);
+	line += needComma ? ",\"NoEvents\":[" : "\"NoEvents\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoEvents())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoMDFeedTypes\":[" : "\"NoMDFeedTypes\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDFeedTypes())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoInstAttrib\":[" : "\"NoInstAttrib\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoInstAttrib())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoLotTypeRules\":[" : "\"NoLotTypeRules\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoLotTypeRules())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoTradingSessions\":[" : "\"NoTradingSessions\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoTradingSessions())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshBookLongQty: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshBookLongQty(const void* body)
+{
+	const MDIncrementalRefreshBookLongQty& message = *reinterpret_cast<const MDIncrementalRefreshBookLongQty*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshBookLongQtyGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderIDEntries\":[" : "\"NoOrderIDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderIDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshTradeSummaryLongQty: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshTradeSummaryLongQty(const void* body)
+{
+	const MDIncrementalRefreshTradeSummaryLongQty& message = *reinterpret_cast<const MDIncrementalRefreshTradeSummaryLongQty*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshTradeSummaryLongQtyGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += needComma ? ",\"NoOrderIDEntries\":[" : "\"NoOrderIDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoOrderIDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshVolumeLongQty: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshVolumeLongQty(const void* body)
+{
+	const MDIncrementalRefreshVolumeLongQty& message = *reinterpret_cast<const MDIncrementalRefreshVolumeLongQty*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshVolumeLongQtyGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// MDIncrementalRefreshSessionStatisticsLongQty: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_MDIncrementalRefreshSessionStatisticsLongQty(const void* body)
+{
+	const MDIncrementalRefreshSessionStatisticsLongQty& message = *reinterpret_cast<const MDIncrementalRefreshSessionStatisticsLongQty*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = MDIncrementalRefreshSessionStatisticsLongQtyGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// SnapshotFullRefreshTCPLongQty: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_SnapshotFullRefreshTCPLongQty(const void* body)
+{
+	const SnapshotFullRefreshTCPLongQty& message = *reinterpret_cast<const SnapshotFullRefreshTCPLongQty*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = SnapshotFullRefreshTCPLongQtyGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
+// SnapshotFullRefreshLongQty: root block plus its repeating groups, as one JSON line.
+inline std::string ToJsonLine_SnapshotFullRefreshLongQty(const void* body)
+{
+	const SnapshotFullRefreshLongQty& message = *reinterpret_cast<const SnapshotFullRefreshLongQty*>(body);
+	std::string line = Tools::Json::SerializeToLine(message);
+	if (!line.empty() && line.back() == '}')
+		line.pop_back();   // reopen the root object to append the groups
+	bool needComma = !line.empty() && line.back() != '{';
+	auto groups = SnapshotFullRefreshLongQtyGroups::Of(message);
+	line += needComma ? ",\"NoMDEntries\":[" : "\"NoMDEntries\":[";
+	needComma = true;
+	{
+		bool first = true;
+		for (const auto& entry : groups.NoMDEntries())
+		{
+			if (!first) line += ',';
+			first = false;
+			line += Tools::Json::SerializeToLine(entry);
+		}
+	}
+	line += ']';
+	line += '}';
+	return line;
+}
+
 // Template id + body -> the message as one compact JSON line, for logging.
 inline std::string ToJsonLine(uint16_t templateId, const void* body)
 {
 	switch (templateId)
 	{
-		case 4: return Tools::Json::SerializeToLine(*reinterpret_cast<const ChannelReset*>(body));
+		case 4: return ToJsonLine_ChannelReset(body);
 		case 12: return Tools::Json::SerializeToLine(*reinterpret_cast<const AdminHeartbeat*>(body));
 		case 15: return Tools::Json::SerializeToLine(*reinterpret_cast<const AdminLogin*>(body));
 		case 16: return Tools::Json::SerializeToLine(*reinterpret_cast<const AdminLogout*>(body));
 		case 30: return Tools::Json::SerializeToLine(*reinterpret_cast<const SecurityStatus*>(body));
-		case 37: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshVolume*>(body));
-		case 39: return Tools::Json::SerializeToLine(*reinterpret_cast<const QuoteRequest*>(body));
-		case 46: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshBook*>(body));
-		case 47: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshOrderBook*>(body));
-		case 48: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshTradeSummary*>(body));
-		case 49: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshDailyStatistics*>(body));
-		case 50: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshLimitsBanding*>(body));
-		case 51: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshSessionStatistics*>(body));
-		case 52: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefresh*>(body));
-		case 53: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefreshOrderBook*>(body));
-		case 54: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionFuture*>(body));
-		case 55: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionOption*>(body));
-		case 56: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionSpread*>(body));
-		case 57: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionFixedIncome*>(body));
-		case 58: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionRepo*>(body));
-		case 59: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotRefreshTopOrders*>(body));
-		case 60: return Tools::Json::SerializeToLine(*reinterpret_cast<const SecurityStatusWorkup*>(body));
-		case 61: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefreshTCP*>(body));
-		case 62: return Tools::Json::SerializeToLine(*reinterpret_cast<const CollateralMarketValue*>(body));
-		case 63: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDInstrumentDefinitionFX*>(body));
-		case 64: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshBookLongQty*>(body));
-		case 65: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshTradeSummaryLongQty*>(body));
-		case 66: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshVolumeLongQty*>(body));
-		case 67: return Tools::Json::SerializeToLine(*reinterpret_cast<const MDIncrementalRefreshSessionStatisticsLongQty*>(body));
-		case 68: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefreshTCPLongQty*>(body));
-		case 69: return Tools::Json::SerializeToLine(*reinterpret_cast<const SnapshotFullRefreshLongQty*>(body));
+		case 37: return ToJsonLine_MDIncrementalRefreshVolume(body);
+		case 39: return ToJsonLine_QuoteRequest(body);
+		case 46: return ToJsonLine_MDIncrementalRefreshBook(body);
+		case 47: return ToJsonLine_MDIncrementalRefreshOrderBook(body);
+		case 48: return ToJsonLine_MDIncrementalRefreshTradeSummary(body);
+		case 49: return ToJsonLine_MDIncrementalRefreshDailyStatistics(body);
+		case 50: return ToJsonLine_MDIncrementalRefreshLimitsBanding(body);
+		case 51: return ToJsonLine_MDIncrementalRefreshSessionStatistics(body);
+		case 52: return ToJsonLine_SnapshotFullRefresh(body);
+		case 53: return ToJsonLine_SnapshotFullRefreshOrderBook(body);
+		case 54: return ToJsonLine_MDInstrumentDefinitionFuture(body);
+		case 55: return ToJsonLine_MDInstrumentDefinitionOption(body);
+		case 56: return ToJsonLine_MDInstrumentDefinitionSpread(body);
+		case 57: return ToJsonLine_MDInstrumentDefinitionFixedIncome(body);
+		case 58: return ToJsonLine_MDInstrumentDefinitionRepo(body);
+		case 59: return ToJsonLine_SnapshotRefreshTopOrders(body);
+		case 60: return ToJsonLine_SecurityStatusWorkup(body);
+		case 61: return ToJsonLine_SnapshotFullRefreshTCP(body);
+		case 62: return ToJsonLine_CollateralMarketValue(body);
+		case 63: return ToJsonLine_MDInstrumentDefinitionFX(body);
+		case 64: return ToJsonLine_MDIncrementalRefreshBookLongQty(body);
+		case 65: return ToJsonLine_MDIncrementalRefreshTradeSummaryLongQty(body);
+		case 66: return ToJsonLine_MDIncrementalRefreshVolumeLongQty(body);
+		case 67: return ToJsonLine_MDIncrementalRefreshSessionStatisticsLongQty(body);
+		case 68: return ToJsonLine_SnapshotFullRefreshTCPLongQty(body);
+		case 69: return ToJsonLine_SnapshotFullRefreshLongQty(body);
 		default: return "{}";
 	}
 }

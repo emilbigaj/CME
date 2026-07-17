@@ -17,3 +17,11 @@ target_link_libraries(ILink3Gateway PRIVATE ILink3Lib)
 # Live order test: send one NewOrderSingle and decode CME's execution-report reply.
 add_executable(ILink3Order "OrderTests.cpp")
 target_link_libraries(ILink3Order PRIVATE ILink3Lib)
+
+# Offline: hexdump an encoded PartyDetailsDefinitionRequest to verify group framing.
+add_executable(ILink3DumpParty "DumpPartyDetails.cpp")
+target_link_libraries(ILink3DumpParty PRIVATE ILink3Lib)
+
+# Live diagnostic: probe which PartyDetailsListReqID values CME accepts (id 0 vs non-zero).
+add_executable(ILink3ProbeParty "ProbePartyDetails.cpp")
+target_link_libraries(ILink3ProbeParty PRIVATE ILink3Lib)

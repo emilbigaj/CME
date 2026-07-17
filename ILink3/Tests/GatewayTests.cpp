@@ -35,7 +35,7 @@ int main(int argc, char** argv)
 
 		// Step 3: Start the background logger for this connection.
 		ILink3::CmeLoggerManager loggerManager;
-		ILink3::CmeLogger& logger = loggerManager.Create(
+		ILink3::CmeLogger& logger = loggerManager.NewLogger(
 			ILink3::CmeLoggerManager::LogDirectory("/mnt/S", config.Environment, marketSegmentId), marketSegmentId);
 		loggerManager.Start();
 

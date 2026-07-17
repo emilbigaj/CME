@@ -33,9 +33,10 @@
 #include <memory>
 #include <mutex>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <thread>
-#include <vector>
+#include <unordered_map>
 
 namespace ILink3
 {
@@ -256,8 +257,8 @@ private:
 // one thread writes them all out in the background.
 class CmeLoggerManager
 {
-	std::vector<std::unique_ptr<CmeLogger>> _loggers;
-	std::mutex _loggersLock;              // guards the list against Create() racing the drainer
+	std::unordered_map<std::string, std::unique_ptr<CmeLogger>> _loggers;   // keyed by directory
+	std::mutex _loggersLock;              // guards the map against NewLogger() racing the drainer
 	std::thread _thread;
 	std::atomic<bool> _running{false};
 
@@ -282,12 +283,17 @@ public:
 			/ ("MSGW_" + std::to_string(marketSegmentId));
 	}
 
-	// Create and register a logger for one connection; returns a reference the session uses.
-	CmeLogger& Create(const std::filesystem::path& directory, int32_t marketSegmentId)
+	// Create and register a logger for one connection, keyed by its directory, and return a
+	// reference the session uses. Throws if a logger for that directory already exists — two
+	// loggers writing the same file would interleave each other's lines.
+	CmeLogger& NewLogger(const std::filesystem::path& directory, int32_t marketSegmentId)
 	{
 		std::lock_guard<std::mutex> lock(_loggersLock);
-		_loggers.push_back(std::make_unique<CmeLogger>(directory, marketSegmentId));
-		return *_loggers.back();
+		const std::string key = directory.string();
+		if (_loggers.contains(key))
+			throw std::invalid_argument("CmeLoggerManager: a logger already exists for " + key);
+		auto [entry, inserted] = _loggers.emplace(key, std::make_unique<CmeLogger>(directory, marketSegmentId));
+		return *entry->second;
 	}
 
 	// Start the background drain thread on the non-trading cores.
@@ -313,8 +319,8 @@ public:
 
 		// Step 2: Final drain so nothing queued at shutdown is lost.
 		std::lock_guard<std::mutex> lock(_loggersLock);
-		for (std::unique_ptr<CmeLogger>& logger : _loggers)
-			logger->Drain();
+		for (auto& entry : _loggers)
+			entry.second->Drain();
 	}
 
 private:
@@ -328,8 +334,8 @@ private:
 			bool wroteAny = false;
 			{
 				std::lock_guard<std::mutex> lock(_loggersLock);
-				for (std::unique_ptr<CmeLogger>& logger : _loggers)
-					wroteAny |= logger->Drain();
+				for (auto& entry : _loggers)
+					wroteAny |= entry.second->Drain();
 			}
 
 			// Step 3: Nothing to do this pass — sleep briefly before looking again.

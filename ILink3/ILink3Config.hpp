@@ -126,6 +126,56 @@ struct TradingSystemConfig
 	};
 };
 
+// Who is trading and how the trade clears. These are registered once per session (via a
+// PartyDetailsDefinitionRequest) and then referenced by every order, so they are not sent on
+// each order. The names are the firm's own from its CME registration. TakeUpFirm is the
+// clearing firm when it differs from the executing firm (a give-up); leave it empty for
+// self-clearing. Operator is also stamped on each order as the sender id.
+struct PartyDetailsConfig
+{
+	std::string Operator;          // party role Operator, and each order's SenderID
+	std::string ExecutingFirm;     // party role ExecutingFirm
+	std::string CustomerAccount;   // party role CustomerAccount
+	std::string TakeUpFirm;        // party role TakeUpFirm (clearing firm on a give-up); empty = none
+	std::string TakeUpAccount;     // party role TakeUpAccount (clearing account on a give-up); empty = none
+	std::string Location;          // each order's Location field (sender's desk / geography)
+	uint64_t SelfMatchPreventionID = 0;
+
+	// Compliance codes (raw values so the config sets them without needing the enum names).
+	// Defaults match the firm's registered CME settings; every one is a required field on the
+	// registration, so none may be left absent.
+	uint8_t CustOrderCapacity = 2;             // CTI code: 1 member-own, 2 firm-prop, 3 member-other, 4 all-other
+	uint8_t ClearingAccountType = 0;           // 0 customer, 1 firm
+	char SelfMatchPreventionInstruction = 'O'; // O cancel-oldest, N cancel-newest
+	uint8_t AvgPxIndicator = 0;                // 0 no average pricing, 1 avg-price group, 3 notional avg-price group
+	uint8_t ClearingTradePriceType = 0;        // 0 clear at execution price, 1 clear at alternate price
+	char CustOrderHandlingInst = 'Y';          // order source: Y client-electronic, H algo-engine, W desk-electronic
+
+	std::string ToString() const
+	{
+		return Tools::Json::Serialize(*this);
+	}
+
+	struct glaze
+	{
+		using T = PartyDetailsConfig;
+		static constexpr auto value = glz::object(
+			"Operator", &T::Operator,
+			"ExecutingFirm", &T::ExecutingFirm,
+			"CustomerAccount", &T::CustomerAccount,
+			"TakeUpFirm", &T::TakeUpFirm,
+			"TakeUpAccount", &T::TakeUpAccount,
+			"Location", &T::Location,
+			"SelfMatchPreventionID", &T::SelfMatchPreventionID,
+			"CustOrderCapacity", &T::CustOrderCapacity,
+			"ClearingAccountType", &T::ClearingAccountType,
+			"SelfMatchPreventionInstruction", &T::SelfMatchPreventionInstruction,
+			"AvgPxIndicator", &T::AvgPxIndicator,
+			"ClearingTradePriceType", &T::ClearingTradePriceType,
+			"CustOrderHandlingInst", &T::CustOrderHandlingInst);
+	};
+};
+
 // The full settings for one environment: identity, secret, gateways, and session tuning.
 // Everything a session needs to connect and log in comes from one of these.
 struct ILink3Config
@@ -144,6 +194,9 @@ struct ILink3Config
 	// ---- session settings (the second logon message also signs over these) ----
 	TradingSystemConfig TradingSystem;
 	uint16_t KeepAliveIntervalMs = 30000;   // CME allows 5000..60000
+
+	// ---- who is trading (registered once per session, referenced by every order) ----
+	PartyDetailsConfig Parties;
 
 	// Find the gateway entry for a market-segment id, or null if the config has none.
 	const MarketSegment* TryFindMarketSegment(int32_t marketSegmentId) const
@@ -244,7 +297,8 @@ struct ILink3Config
 			"ExpirationDate", &T::ExpirationDate,
 			"MarketSegments", &T::MarketSegments,
 			"TradingSystem", &T::TradingSystem,
-			"KeepAliveIntervalMs", &T::KeepAliveIntervalMs);
+			"KeepAliveIntervalMs", &T::KeepAliveIntervalMs,
+			"Parties", &T::Parties);
 	};
 };
 
