@@ -59,9 +59,11 @@ int main(int argc, char** argv)
 		// Step 3: Build the router for this instrument and print whatever it publishes.
 		ILink3::InstrumentRouter router(/*instrumentId*/ 0, securityId, &gateway, tickSize,
 			instrument->DisplayFactor, config.Parties.Operator, config.Parties.Location);
-		router.OnOrderState = [](const Execution::OrderState& state)
+		bool isResting = false;
+		router.OnOrderState = [&](const Execution::OrderState& state)
 		{
 			std::cout << "\n-> OrderState: " << state.ToString() << "\n";
+			isResting = state.OrderStateStatus == Execution::OrderStateStatus::Active;
 		};
 		router.OnOrderRejected = [](const Execution::OrderRejected& rejected, const std::string& text)
 		{
@@ -87,7 +89,8 @@ int main(int argc, char** argv)
 		Execution::OrderTarget target{};
 		target.OrderTargetAction = Execution::OrderTargetAction::Create;
 		target.OrderTargetStatus = Execution::OrderStateStatus::Active;
-		target.OrderHeader.ClientOrderId = 1001;
+		// A unique id per run (the exchange rejects a duplicate ClOrdID within a session/day).
+		target.OrderHeader.ClientOrderId = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
 		target.OrderHeader.InstrumentId = 0;
 		target.OrderHeader.Seq = 0;
 		target.OrderProfile.Ticks = ticks;
@@ -95,12 +98,22 @@ int main(int argc, char** argv)
 		std::cout << "Routing create: buy 1 @ ticks " << ticks << " (" << ticks * tickSize << ")\n";
 		router.OnOrderTarget(target);
 
-		// Step 7: Poll for a few seconds so the reports arrive and reconcile.
+		// Step 7: Poll for the accept, then route a cancel for the same order and watch it go done.
+		bool cancelSent = false;
 		const int64_t start = Tools::Timestamp::UtcNow().NanosSinceEpoch;
 		while (gateway.State() == ILink3::SessionState::Established)
 		{
 			gateway.Poll();
-			if ((Tools::Timestamp::UtcNow().NanosSinceEpoch - start) / 1'000'000'000LL >= 5)
+			if (isResting && !cancelSent)
+			{
+				Execution::OrderTarget cancel = target;
+				cancel.OrderTargetAction = Execution::OrderTargetAction::Cancel;
+				cancel.OrderHeader.Seq = 1;
+				std::cout << "Routing cancel for order " << cancel.OrderHeader.ClientOrderId << "\n";
+				router.OnOrderTarget(cancel);
+				cancelSent = true;
+			}
+			if ((Tools::Timestamp::UtcNow().NanosSinceEpoch - start) / 1'000'000'000LL >= 6)
 				break;
 		}
 

@@ -180,6 +180,27 @@ inline NewOrderSingle NewLimitOrder(int32_t securityId, SideReq side, uint32_t q
 	return order;
 }
 
+// Build an OrderCancelRequest to pull a working order. It references the order by the exchange's
+// own id (returned on the acceptance report), so it needs no party details of its own. The
+// gateway fills SeqNum and SendingTimeEpoch when it sends.
+inline OrderCancelRequest NewCancel(int32_t securityId, SideReq side, uint64_t exchangeOrderId,
+                                    const std::string& clOrdId, const std::string& senderId,
+                                    uint64_t orderRequestId, const std::string& location)
+{
+	OrderCancelRequest cancel{};
+	cancel.OrderID = exchangeOrderId;
+	cancel.PartyDetailsListReqID = 0;                       // references an existing order; no parties
+	cancel.ManualOrderIndicator = ManualOrdIndReq::Automated;
+	cancel.SenderID = senderId;
+	cancel.ClOrdID = clOrdId;
+	cancel.OrderRequestID = orderRequestId;
+	cancel.Location = location;
+	cancel.SecurityID = securityId;
+	cancel.Side = side;
+	cancel.LiquidityFlag = static_cast<BooleanNULL>(255);   // not present
+	return cancel;
+}
+
 // Build a framed PartyDetailsDefinitionRequest(518): registers the trading parties (firm,
 // account, operator, and clearing firm on a give-up) under `partyDetailsListReqId`, which
 // every order then references. The caller supplies the sequence number and send time. Returns

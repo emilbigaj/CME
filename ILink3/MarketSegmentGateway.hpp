@@ -183,6 +183,30 @@ public:
 		return true;
 	}
 
+	// Send an order cancel. With on-demand party details, every order-management message carries
+	// id 0 and must be immediately preceded by a party-details definition — the cancel included —
+	// so this sends the 518 then the cancel. The gateway stamps the sequence numbers and send
+	// times. Returns false if the session is not open.
+	bool SendOrderCancel(OrderCancelRequest cancel)
+	{
+		// Step 1: Only send on an open session.
+		if (_state != SessionState::Established)
+			return false;
+
+		// Step 2: Define the parties for this message (id 0), as its own sequenced message.
+		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
+			_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+		++_outboundSeqNo;
+
+		// Step 3: Send the cancel referencing id 0, right behind the definition.
+		cancel.PartyDetailsListReqID = 0;
+		cancel.SeqNum = _outboundSeqNo;
+		cancel.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
+		SendFramed(FrameMessage(_sendBuffer, OrderCancelRequest::TemplateId, OrderCancelRequest::BlockLength, &cancel, sizeof(cancel), 0));
+		++_outboundSeqNo;
+		return true;
+	}
+
 	// One service pass, called in a loop by the owning thread: take in whatever has arrived,
 	// then send a heartbeat if we have been silent too long.
 	void Poll()

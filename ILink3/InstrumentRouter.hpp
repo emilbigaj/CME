@@ -55,6 +55,7 @@ class InstrumentRouter
 		uint64_t ExchangeOrderId = 0;          // CME's order id, known once the order is accepted
 	};
 	std::unordered_map<uint64_t, Record> _orders;   // keyed by client order id
+	std::unordered_map<uint64_t, uint64_t> _clientOrderIdByExchangeOrderId;   // for reports keyed by exchange id
 
 public:
 	// Called with the server's events for this instrument once each execution report is decoded.
@@ -63,8 +64,7 @@ public:
 	std::function<void(const Execution::OrderRejected&, const std::string&)> OnOrderRejected;
 	std::function<void(const Execution::Fill&)> OnFill;
 
-	InstrumentRouter(int32_t instrumentId, int32_t securityId, MarketSegmentGateway* gateway,
-	                 double tickSize, double displayFactor, const std::string& senderId, const std::string& location)
+	InstrumentRouter(int32_t instrumentId, int32_t securityId, MarketSegmentGateway* gateway, double tickSize, double displayFactor, const std::string& senderId, const std::string& location)
 		: _instrumentId(instrumentId),
 		  _securityId(securityId),
 		  _gateway(gateway),
@@ -97,7 +97,8 @@ public:
 		{
 			case ExecutionReportNew::TemplateId:    HandleNew(*message.As<ExecutionReportNew>()); break;
 			case ExecutionReportReject::TemplateId: HandleReject(*message.As<ExecutionReportReject>()); break;
-			default: break;   // fills, cancels, and modifies handled next
+			case ExecutionReportCancel::TemplateId: HandleCancel(*message.As<ExecutionReportCancel>()); break;
+			default: break;   // fills and modifies handled next
 		}
 	}
 
@@ -119,9 +120,22 @@ private:
 		_gateway->SendNewOrderSingle(order);
 	}
 
-	// Amend and cancel go out next; for now they are no-ops so the create path can be proven.
+	// Cancel a working order, referencing it by the exchange id we kept from its acceptance.
+	void SendCancel(const Execution::OrderTarget& target)
+	{
+		auto it = _orders.find(target.OrderHeader.ClientOrderId);
+		if (it == _orders.end() || it->second.ExchangeOrderId == 0)
+			return;   // nothing working to cancel
+
+		const SideReq side = it->second.OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
+		OrderCancelRequest cancel = NewCancel(_securityId, side, it->second.ExchangeOrderId,
+			std::to_string(target.OrderHeader.ClientOrderId), _senderId.ToString(), _nextOrderRequestId++, _location.ToString());
+		it->second.Seq = target.OrderHeader.Seq;   // the cancel is this revision
+		_gateway->SendOrderCancel(cancel);
+	}
+
+	// Amend goes out next.
 	void SendReplace(const Execution::OrderTarget&) {}
-	void SendCancel(const Execution::OrderTarget&) {}
 
 	// ---- inbound ----
 
@@ -134,7 +148,10 @@ private:
 
 		auto it = _orders.find(clientOrderId);
 		if (it != _orders.end())
+		{
 			it->second.ExchangeOrderId = report.OrderID;
+			_clientOrderIdByExchangeOrderId[report.OrderID] = clientOrderId;   // for cancel/fill reports
+		}
 
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;   // the server fills in client/strategy ids
@@ -171,6 +188,32 @@ private:
 			_orders.erase(it);   // the order never worked, so drop it from the book
 		if (OnOrderRejected)
 			OnOrderRejected(rejected, report.Text.ToString());
+	}
+
+	// An order was cancelled: publish it done and drop it from the book. The report names the
+	// order by the exchange id, so we resolve back to our client order id through that.
+	void HandleCancel(const ExecutionReportCancel& report)
+	{
+		auto lookup = _clientOrderIdByExchangeOrderId.find(report.OrderID);
+		if (lookup == _clientOrderIdByExchangeOrderId.end())
+			return;
+		const uint64_t clientOrderId = lookup->second;
+		auto it = _orders.find(clientOrderId);
+
+		Execution::OrderState state{};
+		state.OrderHeader.ClientOrderId = clientOrderId;
+		state.OrderHeader.InstrumentId = _instrumentId;
+		state.OrderHeader.Seq = it != _orders.end() ? it->second.Seq : 0;
+		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
+		state.OrderStateStatus = Execution::OrderStateStatus::Done;
+		state.OrderProfile = it != _orders.end() ? it->second.OrderProfile : Execution::OrderProfile{};
+		state.QuantityFilled = 0;
+
+		_clientOrderIdByExchangeOrderId.erase(lookup);
+		if (it != _orders.end())
+			_orders.erase(it);
+		if (OnOrderState)
+			OnOrderState(state);
 	}
 
 	// ---- helpers ----
