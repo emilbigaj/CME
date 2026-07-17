@@ -57,8 +57,11 @@ int main(int argc, char** argv)
 		ILink3::MarketSegmentGateway gateway(config, marketSegmentId, &logger);
 
 		// Step 3: Build the router for this instrument and print whatever it publishes.
+		// Capacity covers the full global-index space the packed id can carry (the test id below
+		// is a timestamp, so its index bits are arbitrary).
 		ILink3::InstrumentRouter router(/*instrumentId*/ 0, securityId, &gateway, tickSize,
-			instrument->DisplayFactor, config.Parties.Operator, config.Parties.Location);
+			instrument->DisplayFactor, config.Parties.Operator, config.Parties.Location,
+			/*ordersCapacity*/ 1 << 16);
 		bool isResting = false;
 		router.OnOrderState = [&](const Execution::OrderState& state)
 		{

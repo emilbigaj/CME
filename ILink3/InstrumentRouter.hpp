@@ -6,10 +6,15 @@
 // router exists per allocated instrument.
 //
 // The single thread that owns the segment's gateway drives this router for both directions —
-// it drains order intents and sends, and it reads execution reports and reconciles — so the
-// order book here needs no locking. Each live order is remembered by its client order id: the
-// revision it is on, the price/size the server asked for, and (once accepted) the exchange's
-// own order id for later amend or cancel.
+// it drains order intents and sends, and it reads execution reports and reconciles — so no
+// locking is needed anywhere here.
+//
+// The order book is a dense slot array, not a map. A client order id is a packed value whose
+// low bits are the order's global index — the same index the server uses for its own order
+// arrays — so a record is found by masking the id: no hashing, no allocation, one predictable
+// cache line per order. The slot remembers the full id it belongs to; the generation bits in
+// the id make a stale report against a reused slot detectably mismatch. The id also rides to
+// the exchange and back as the order's text ClOrdID, formatted and parsed on the stack.
 //
 // Prices cross a scale change at this boundary. The server works in ticks; the wire wants the
 // exchange (Globex) price, which is a whole number of raw increments. One server tick equals a
@@ -19,17 +24,17 @@
 #include "ILink3Sbe.hpp"
 #include "MarketSegmentGateway.hpp"
 #include "Wire.hpp"
-#include "Order.hpp"        // Execution::OrderTarget / OrderState / OrderRejected / Fill
+#include "Order.hpp"             // Execution::OrderTarget / OrderState / OrderRejected / Fill
+#include "OrderIdAllocator.hpp"  // the client order id <-> global index packing
 #include "String.hpp"
 #include "Timestamp.hpp"
 
 #include <charconv>
-#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <string>
-#include <unordered_map>
+#include <vector>
 
 namespace ILink3
 {
@@ -41,21 +46,22 @@ class InstrumentRouter
 	int32_t _securityId;                   // CME's id, named on the wire
 	MarketSegmentGateway* _gateway;        // the session this instrument's orders go out on
 	int64_t _globexTickMantissa;           // wire price step (PRICE9 mantissa) per one server tick
-	Tools::StringN<20> _senderId;          // operator id stamped on each order
-	Tools::StringN<5> _location;           // desk location stamped on each order
+	std::string _senderId;                 // operator id stamped on each order (built once)
+	std::string _location;                 // desk location stamped on each order (built once)
 
 	// ---- live order book (owned by the single driving thread) ----
 	uint64_t _nextOrderRequestId = 1;      // a fresh request id per outbound order message
 
-	// What we remember about one working order so an execution report can be reconciled to it.
+	// One slot per order index. ClientOrderId is the full packed id the slot currently belongs
+	// to (zero = empty); its generation bits make a report against a reused slot mismatch.
 	struct Record
 	{
+		uint64_t ClientOrderId = 0;
+		uint64_t ExchangeOrderId = 0;          // CME's order id, known once the order is accepted
 		int32_t Seq = 0;                       // the server revision this order is on
 		Execution::OrderProfile OrderProfile;  // the price/size the server asked for
-		uint64_t ExchangeOrderId = 0;          // CME's order id, known once the order is accepted
 	};
-	std::unordered_map<uint64_t, Record> _orders;   // keyed by client order id
-	std::unordered_map<uint64_t, uint64_t> _clientOrderIdByExchangeOrderId;   // for reports keyed by exchange id
+	std::vector<Record> _orders;   // indexed by the global order index packed into the id
 
 public:
 	// Called with the server's events for this instrument once each execution report is decoded.
@@ -64,7 +70,9 @@ public:
 	std::function<void(const Execution::OrderRejected&, const std::string&)> OnOrderRejected;
 	std::function<void(const Execution::Fill&)> OnFill;
 
-	InstrumentRouter(int32_t instrumentId, int32_t securityId, MarketSegmentGateway* gateway, double tickSize, double displayFactor, const std::string& senderId, const std::string& location)
+	InstrumentRouter(int32_t instrumentId, int32_t securityId, MarketSegmentGateway* gateway,
+	                 double tickSize, double displayFactor, const std::string& senderId,
+	                 const std::string& location, int32_t ordersCapacity)
 		: _instrumentId(instrumentId),
 		  _securityId(securityId),
 		  _gateway(gateway),
@@ -72,7 +80,8 @@ public:
 		  // times a billion gives the nine-decimal mantissa the wire carries.
 		  _globexTickMantissa(static_cast<int64_t>(std::llround(tickSize / displayFactor)) * 1'000'000'000LL),
 		  _senderId(senderId),
-		  _location(location)
+		  _location(location),
+		  _orders(static_cast<size_t>(ordersCapacity))
 	{
 	}
 
@@ -103,34 +112,56 @@ public:
 	}
 
 private:
+	// ---- the slot array ----
+
+	// The slot an id maps to, or null if the id's index is out of range. The caller checks
+	// whether the slot currently belongs to that id.
+	Record* Slot(uint64_t clientOrderId)
+	{
+		const size_t index = static_cast<size_t>(Execution::OrderIdAllocator::GetGlobalIndex(clientOrderId));
+		return index < _orders.size() ? &_orders[index] : nullptr;
+	}
+
+	// The slot currently owned by this exact id (generation included), or null.
+	Record* Find(uint64_t clientOrderId)
+	{
+		Record* record = Slot(clientOrderId);
+		return record != nullptr && record->ClientOrderId == clientOrderId ? record : nullptr;
+	}
+
 	// ---- outbound ----
 
-	// Send a new order and remember it under its client order id.
+	// Send a new order and claim its slot.
 	void SendNew(const Execution::OrderTarget& target)
 	{
 		const uint64_t clientOrderId = target.OrderHeader.ClientOrderId;
-		const int32_t sign = target.OrderProfile.Sign();
-		const SideReq side = sign >= 0 ? SideReq::Buy : SideReq::Sell;
+		Record* record = Slot(clientOrderId);
+		if (record == nullptr)
+			return;
+
+		const SideReq side = target.OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
 		const uint32_t quantity = static_cast<uint32_t>(std::abs(target.OrderProfile.Quantity));
 		const int64_t priceMantissa = static_cast<int64_t>(target.OrderProfile.Ticks) * _globexTickMantissa;
 
 		NewOrderSingle order = NewLimitOrder(_securityId, side, quantity, priceMantissa,
-			std::to_string(clientOrderId), _senderId.ToString(), 0, _nextOrderRequestId++, _location.ToString());
-		_orders[clientOrderId] = Record{target.OrderHeader.Seq, target.OrderProfile, 0};
+			std::string(), _senderId, 0, _nextOrderRequestId++, _location);
+		FormatClientOrderId(clientOrderId, order.ClOrdID);
+		*record = Record{clientOrderId, 0, target.OrderHeader.Seq, target.OrderProfile};
 		_gateway->SendNewOrderSingle(order);
 	}
 
 	// Cancel a working order, referencing it by the exchange id we kept from its acceptance.
 	void SendCancel(const Execution::OrderTarget& target)
 	{
-		auto it = _orders.find(target.OrderHeader.ClientOrderId);
-		if (it == _orders.end() || it->second.ExchangeOrderId == 0)
+		Record* record = Find(target.OrderHeader.ClientOrderId);
+		if (record == nullptr || record->ExchangeOrderId == 0)
 			return;   // nothing working to cancel
 
-		const SideReq side = it->second.OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
-		OrderCancelRequest cancel = NewCancel(_securityId, side, it->second.ExchangeOrderId,
-			std::to_string(target.OrderHeader.ClientOrderId), _senderId.ToString(), _nextOrderRequestId++, _location.ToString());
-		it->second.Seq = target.OrderHeader.Seq;   // the cancel is this revision
+		const SideReq side = record->OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
+		OrderCancelRequest cancel = NewCancel(_securityId, side, record->ExchangeOrderId,
+			std::string(), _senderId, _nextOrderRequestId++, _location);
+		FormatClientOrderId(target.OrderHeader.ClientOrderId, cancel.ClOrdID);
+		record->Seq = target.OrderHeader.Seq;   // the cancel is this revision
 		_gateway->SendOrderCancel(cancel);
 	}
 
@@ -145,21 +176,17 @@ private:
 		uint64_t clientOrderId = 0;
 		if (!TryParseClientOrderId(report.ClOrdID, clientOrderId))
 			return;
-
-		auto it = _orders.find(clientOrderId);
-		if (it != _orders.end())
-		{
-			it->second.ExchangeOrderId = report.OrderID;
-			_clientOrderIdByExchangeOrderId[report.OrderID] = clientOrderId;   // for cancel/fill reports
-		}
+		Record* record = Find(clientOrderId);
+		if (record != nullptr)
+			record->ExchangeOrderId = report.OrderID;
 
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;   // the server fills in client/strategy ids
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = it != _orders.end() ? it->second.Seq : 0;
+		state.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Active;
-		state.OrderProfile = it != _orders.end() ? it->second.OrderProfile : ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
+		state.OrderProfile = record != nullptr ? record->OrderProfile : ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
 		state.QuantityFilled = 0;
 		if (OnOrderState)
 			OnOrderState(state);
@@ -171,47 +198,39 @@ private:
 		uint64_t clientOrderId = 0;
 		if (!TryParseClientOrderId(report.ClOrdID, clientOrderId))
 			return;
-
-		auto it = _orders.find(clientOrderId);
-		Execution::OrderProfile profile = it != _orders.end()
-			? it->second.OrderProfile
-			: ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
+		Record* record = Find(clientOrderId);
 
 		Execution::OrderRejected rejected{};
 		rejected.OrderHeader.ClientOrderId = clientOrderId;
 		rejected.OrderHeader.InstrumentId = _instrumentId;
-		rejected.OrderHeader.Seq = it != _orders.end() ? it->second.Seq : 0;
+		rejected.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
 		rejected.OrderTargetAction = Execution::OrderTargetAction::Create;
 		rejected.OrderRejectedSource = Execution::OrderRejectedSource::Exchange;
-		rejected.OrderProfile = profile;
-		if (it != _orders.end())
-			_orders.erase(it);   // the order never worked, so drop it from the book
+		rejected.OrderProfile = record != nullptr ? record->OrderProfile : ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
+		if (record != nullptr)
+			record->ClientOrderId = 0;   // the order never worked, so free its slot
 		if (OnOrderRejected)
 			OnOrderRejected(rejected, report.Text.ToString());
 	}
 
-	// An order was cancelled: publish it done and drop it from the book. The report names the
-	// order by the exchange id, so we resolve back to our client order id through that.
+	// An order was cancelled: publish it done and free its slot.
 	void HandleCancel(const ExecutionReportCancel& report)
 	{
-		auto lookup = _clientOrderIdByExchangeOrderId.find(report.OrderID);
-		if (lookup == _clientOrderIdByExchangeOrderId.end())
+		uint64_t clientOrderId = 0;
+		if (!TryParseClientOrderId(report.ClOrdID, clientOrderId))
 			return;
-		const uint64_t clientOrderId = lookup->second;
-		auto it = _orders.find(clientOrderId);
+		Record* record = Find(clientOrderId);
 
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = it != _orders.end() ? it->second.Seq : 0;
+		state.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Done;
-		state.OrderProfile = it != _orders.end() ? it->second.OrderProfile : Execution::OrderProfile{};
+		state.OrderProfile = record != nullptr ? record->OrderProfile : Execution::OrderProfile{};
 		state.QuantityFilled = 0;
-
-		_clientOrderIdByExchangeOrderId.erase(lookup);
-		if (it != _orders.end())
-			_orders.erase(it);
+		if (record != nullptr)
+			record->ClientOrderId = 0;   // the order is done, so free its slot
 		if (OnOrderState)
 			OnOrderState(state);
 	}
@@ -228,11 +247,23 @@ private:
 		return profile;
 	}
 
-	// The client order id is carried as text in ClOrdID; parse it back to a number.
+	// Write the id into an order's text ClOrdID field, via the stack (no allocation).
+	static void FormatClientOrderId(uint64_t clientOrderId, Tools::StringN<20>& clOrdId)
+	{
+		char buffer[24];
+		char* end = std::to_chars(buffer, buffer + sizeof(buffer) - 1, clientOrderId).ptr;
+		*end = '\0';
+		clOrdId.Set(buffer);
+	}
+
+	// Read the id back out of a report's text ClOrdID field, straight from the fixed chars.
 	static bool TryParseClientOrderId(const Tools::StringN<20>& clOrdId, uint64_t& value)
 	{
-		const std::string text = clOrdId.ToString();
-		return std::from_chars(text.data(), text.data() + text.size(), value).ec == std::errc{};
+		const char* begin = reinterpret_cast<const char*>(clOrdId.Chars);
+		size_t length = 0;
+		while (length < clOrdId.Capacity && clOrdId.Chars[length] != 0)
+			++length;
+		return length > 0 && std::from_chars(begin, begin + length, value).ec == std::errc{};
 	}
 };
 
