@@ -104,10 +104,14 @@ public:
 	{
 		switch (message.TemplateId)
 		{
-			case ExecutionReportNew::TemplateId:    HandleNew(*message.As<ExecutionReportNew>()); break;
-			case ExecutionReportReject::TemplateId: HandleReject(*message.As<ExecutionReportReject>()); break;
-			case ExecutionReportCancel::TemplateId: HandleCancel(*message.As<ExecutionReportCancel>()); break;
-			default: break;   // fills and modifies handled next
+			case ExecutionReportNew::TemplateId:           HandleNew(*message.As<ExecutionReportNew>()); break;
+			case ExecutionReportReject::TemplateId:        HandleReject(*message.As<ExecutionReportReject>()); break;
+			case ExecutionReportCancel::TemplateId:        HandleCancel(*message.As<ExecutionReportCancel>()); break;
+			case ExecutionReportModify::TemplateId:        HandleModify(*message.As<ExecutionReportModify>()); break;
+			case ExecutionReportTradeOutright::TemplateId: HandleFill(*message.As<ExecutionReportTradeOutright>()); break;
+			case OrderCancelReject::TemplateId:            HandleModifyReject(message.As<OrderCancelReject>()->ClOrdID, message.As<OrderCancelReject>()->Text, Execution::OrderTargetAction::Cancel); break;
+			case OrderCancelReplaceReject::TemplateId:     HandleModifyReject(message.As<OrderCancelReplaceReject>()->ClOrdID, message.As<OrderCancelReplaceReject>()->Text, Execution::OrderTargetAction::Amend); break;
+			default: break;
 		}
 	}
 
@@ -165,8 +169,25 @@ private:
 		_gateway->SendOrderCancel(cancel);
 	}
 
-	// Amend goes out next.
-	void SendReplace(const Execution::OrderTarget&) {}
+	// Move a working order to a new price/size, referencing it by the exchange id. The slot's
+	// profile is only updated when the exchange confirms the modify, so a rejected replace
+	// leaves the record true to the order still working at its old price.
+	void SendReplace(const Execution::OrderTarget& target)
+	{
+		Record* record = Find(target.OrderHeader.ClientOrderId);
+		if (record == nullptr || record->ExchangeOrderId == 0)
+			return;   // nothing working to replace
+
+		const SideReq side = record->OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
+		const uint32_t quantity = static_cast<uint32_t>(std::abs(target.OrderProfile.Quantity));
+		const int64_t priceMantissa = static_cast<int64_t>(target.OrderProfile.Ticks) * _globexTickMantissa;
+
+		OrderCancelReplaceRequest replace = NewReplace(_securityId, side, record->ExchangeOrderId,
+			quantity, priceMantissa, _senderId, _nextOrderRequestId++, _location);
+		FormatClientOrderId(target.OrderHeader.ClientOrderId, replace.ClOrdID);
+		record->Seq = target.OrderHeader.Seq;   // the replace is this revision
+		_gateway->SendOrderCancelReplace(replace);
+	}
 
 	// ---- inbound ----
 
@@ -235,15 +256,99 @@ private:
 			OnOrderState(state);
 	}
 
+	// An order was modified: adopt the confirmed price/size into the slot and publish it active.
+	void HandleModify(const ExecutionReportModify& report)
+	{
+		uint64_t clientOrderId = 0;
+		if (!TryParseClientOrderId(report.ClOrdID, clientOrderId))
+			return;
+		Record* record = Find(clientOrderId);
+
+		const Execution::OrderProfile confirmed = ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
+		if (record != nullptr)
+			record->OrderProfile = confirmed;
+
+		Execution::OrderState state{};
+		state.OrderHeader.ClientOrderId = clientOrderId;
+		state.OrderHeader.InstrumentId = _instrumentId;
+		state.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
+		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
+		state.OrderStateStatus = Execution::OrderStateStatus::Active;
+		state.OrderProfile = confirmed;
+		state.QuantityFilled = SignedQuantity(report.CumQty, report.Side);
+		if (OnOrderState)
+			OnOrderState(state);
+	}
+
+	// An order traded: publish the fill, then the order's new state — done when nothing is left
+	// working, else still active with the filled amount.
+	void HandleFill(const ExecutionReportTradeOutright& report)
+	{
+		uint64_t clientOrderId = 0;
+		if (!TryParseClientOrderId(report.ClOrdID, clientOrderId))
+			return;
+		Record* record = Find(clientOrderId);
+
+		// Step 1: The fill itself: the traded price/size, maker or taker by the aggressor flag.
+		Execution::Fill fill{};
+		fill.OrderHeader.ClientOrderId = clientOrderId;
+		fill.OrderHeader.InstrumentId = _instrumentId;
+		fill.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
+		fill.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
+		fill.FillType = report.AggressorIndicator == BooleanFlag::True ? Execution::FillType::Taker : Execution::FillType::Maker;
+		fill.FillId = report.SecExecID;
+		fill.OrderProfile = ProfileFrom(report.LastPx.Mantissa, report.LastQty, report.Side);
+		if (OnFill)
+			OnFill(fill);
+
+		// Step 2: The order after the trade.
+		const bool done = report.LeavesQty == 0;
+		Execution::OrderState state{};
+		state.OrderHeader = fill.OrderHeader;
+		state.OrderStateStatus = done ? Execution::OrderStateStatus::Done : Execution::OrderStateStatus::Active;
+		state.OrderProfile = ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
+		state.QuantityFilled = SignedQuantity(report.CumQty, report.Side);
+		if (record != nullptr && done)
+			record->ClientOrderId = 0;   // fully filled, so free its slot
+		if (OnOrderState)
+			OnOrderState(state);
+	}
+
+	// A cancel or replace was refused: the order stays working as it was, so keep the slot and
+	// publish the rejection with the exchange's reason text.
+	void HandleModifyReject(const Tools::StringN<20>& clOrdId, const Tools::StringN<256>& text,
+	                        Execution::OrderTargetAction action)
+	{
+		uint64_t clientOrderId = 0;
+		if (!TryParseClientOrderId(clOrdId, clientOrderId))
+			return;
+		Record* record = Find(clientOrderId);
+
+		Execution::OrderRejected rejected{};
+		rejected.OrderHeader.ClientOrderId = clientOrderId;
+		rejected.OrderHeader.InstrumentId = _instrumentId;
+		rejected.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
+		rejected.OrderTargetAction = action;
+		rejected.OrderRejectedSource = Execution::OrderRejectedSource::Exchange;
+		rejected.OrderProfile = record != nullptr ? record->OrderProfile : Execution::OrderProfile{};
+		if (OnOrderRejected)
+			OnOrderRejected(rejected, text.ToString());
+	}
+
 	// ---- helpers ----
+
+	// A wire quantity as the server's signed convention: positive buys, negative sells.
+	static int32_t SignedQuantity(uint32_t quantity, SideReq side)
+	{
+		return side == SideReq::Buy ? static_cast<int32_t>(quantity) : -static_cast<int32_t>(quantity);
+	}
 
 	// Rebuild the server's tick/lot view of an order from an execution report's price and size.
 	Execution::OrderProfile ProfileFrom(int64_t priceMantissa, uint32_t orderQty, SideReq side) const
 	{
 		Execution::OrderProfile profile{};
 		profile.Ticks = _globexTickMantissa != 0 ? static_cast<int32_t>(priceMantissa / _globexTickMantissa) : 0;
-		const int32_t sign = side == SideReq::Buy ? 1 : -1;
-		profile.Quantity = static_cast<int32_t>(orderQty) * sign;
+		profile.Quantity = SignedQuantity(orderQty, side);
 		return profile;
 	}
 

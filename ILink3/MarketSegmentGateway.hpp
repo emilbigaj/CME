@@ -207,6 +207,30 @@ public:
 		return true;
 	}
 
+	// Send an order replace (new price/size for a working order). Like every order-management
+	// message in on-demand mode, it is paired with a party-details definition (id 0) sent
+	// immediately before it. The gateway stamps the sequence numbers and send times. Returns
+	// false if the session is not open.
+	bool SendOrderCancelReplace(OrderCancelReplaceRequest replace)
+	{
+		// Step 1: Only send on an open session.
+		if (_state != SessionState::Established)
+			return false;
+
+		// Step 2: Define the parties for this message (id 0), as its own sequenced message.
+		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
+			_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+		++_outboundSeqNo;
+
+		// Step 3: Send the replace referencing id 0, right behind the definition.
+		replace.PartyDetailsListReqID = 0;
+		replace.SeqNum = _outboundSeqNo;
+		replace.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
+		SendFramed(FrameMessage(_sendBuffer, OrderCancelReplaceRequest::TemplateId, OrderCancelReplaceRequest::BlockLength, &replace, sizeof(replace), 0));
+		++_outboundSeqNo;
+		return true;
+	}
+
 	// One service pass, called in a loop by the owning thread: take in whatever has arrived,
 	// then send a heartbeat if we have been silent too long.
 	void Poll()

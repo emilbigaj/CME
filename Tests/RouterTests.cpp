@@ -101,22 +101,34 @@ int main(int argc, char** argv)
 		std::cout << "Routing create: buy 1 @ ticks " << ticks << " (" << ticks * tickSize << ")\n";
 		router.OnOrderTarget(target);
 
-		// Step 7: Poll for the accept, then route a cancel for the same order and watch it go done.
-		bool cancelSent = false;
+		// Step 7: Walk the full lifecycle as the states come back: once resting, replace it one
+		// tick higher; once the replace confirms, cancel it and watch it go done.
+		bool replaceSent = false, cancelSent = false;
 		const int64_t start = Tools::Timestamp::UtcNow().NanosSinceEpoch;
 		while (gateway.State() == ILink3::SessionState::Established)
 		{
 			gateway.Poll();
-			if (isResting && !cancelSent)
+			if (isResting && !replaceSent)
+			{
+				Execution::OrderTarget amend = target;
+				amend.OrderTargetAction = Execution::OrderTargetAction::Amend;
+				amend.OrderHeader.Seq = 1;
+				amend.OrderProfile.Ticks = ticks + 1;
+				std::cout << "Routing amend to ticks " << amend.OrderProfile.Ticks << "\n";
+				router.OnOrderTarget(amend);
+				replaceSent = true;
+				isResting = false;   // wait for the modify confirmation before cancelling
+			}
+			else if (isResting && replaceSent && !cancelSent)
 			{
 				Execution::OrderTarget cancel = target;
 				cancel.OrderTargetAction = Execution::OrderTargetAction::Cancel;
-				cancel.OrderHeader.Seq = 1;
+				cancel.OrderHeader.Seq = 2;
 				std::cout << "Routing cancel for order " << cancel.OrderHeader.ClientOrderId << "\n";
 				router.OnOrderTarget(cancel);
 				cancelSent = true;
 			}
-			if ((Tools::Timestamp::UtcNow().NanosSinceEpoch - start) / 1'000'000'000LL >= 6)
+			if ((Tools::Timestamp::UtcNow().NanosSinceEpoch - start) / 1'000'000'000LL >= 8)
 				break;
 		}
 

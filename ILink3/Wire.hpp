@@ -201,6 +201,49 @@ inline OrderCancelRequest NewCancel(int32_t securityId, SideReq side, uint64_t e
 	return cancel;
 }
 
+// Build an OrderCancelReplaceRequest to move a working order to a new price and/or size. It
+// references the order by the exchange's own id, with every optional field set to its "not
+// present" value. The gateway fills SeqNum and SendingTimeEpoch when it sends.
+inline OrderCancelReplaceRequest NewReplace(int32_t securityId, SideReq side, uint64_t exchangeOrderId,
+                                            uint32_t quantity, int64_t priceMantissa,
+                                            const std::string& senderId, uint64_t orderRequestId,
+                                            const std::string& location)
+{
+	// Step 1: The "absent" values for the optional fields.
+	constexpr int64_t PriceNull = INT64_MAX;
+	constexpr uint32_t QuantityNull = UINT32_MAX;
+	constexpr uint16_t DateNull = 65535;
+	constexpr uint8_t ByteNull = 255;
+
+	// Step 2: The new price and size, referencing the working order.
+	OrderCancelReplaceRequest replace{};
+	replace.Price.Mantissa = priceMantissa;
+	replace.OrderQty = quantity;
+	replace.SecurityID = securityId;
+	replace.Side = side;
+	replace.SenderID = senderId;
+	replace.OrderID = exchangeOrderId;
+	replace.OrderRequestID = orderRequestId;
+	replace.Location = location;
+	replace.OrdType = OrderTypeReq::Limit;
+	replace.TimeInForce = TimeInForce::Day;
+	replace.ManualOrderIndicator = ManualOrdIndReq::Automated;
+	replace.OFMOverride = OFMOverrideReq::Disabled;   // keep the order's queue position when possible
+
+	// Step 3: Everything optional we are not using, set to "not present".
+	replace.StopPx.Mantissa = PriceNull;
+	replace.MinQty = QuantityNull;
+	replace.DisplayQty = QuantityNull;
+	replace.ExpireDate = DateNull;
+	replace.ExecInst.Value = 0;
+	replace.ExecutionMode = static_cast<ExecMode>(0);
+	replace.LiquidityFlag = static_cast<BooleanNULL>(ByteNull);
+	replace.ManagedOrder = static_cast<BooleanNULL>(ByteNull);
+	replace.ShortSaleType = static_cast<ShortSaleType>(ByteNull);
+	replace.DiscretionPrice.Mantissa = PriceNull;
+	return replace;
+}
+
 // Build a framed PartyDetailsDefinitionRequest(518): registers the trading parties (firm,
 // account, operator, and clearing firm on a give-up) under `partyDetailsListReqId`, which
 // every order then references. The caller supplies the sequence number and send time. Returns
