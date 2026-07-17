@@ -45,3 +45,7 @@ target_link_libraries(Mdp3Probe PRIVATE Mdp3Lib ILink3Lib)
 # Live: decode a market-data feed — walk packets, print messages, tally kinds and gaps.
 add_executable(Mdp3Dump "Mdp3DumpTests.cpp")
 target_link_libraries(Mdp3Dump PRIVATE Mdp3Lib)
+
+# Live: one instrument's book — feed -> walker -> book builder -> market-by-price, top printed.
+add_executable(Mdp3Book "Mdp3BookTests.cpp")
+target_link_libraries(Mdp3Book PRIVATE Mdp3Lib SecDefLib)
