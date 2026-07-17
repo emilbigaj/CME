@@ -37,3 +37,7 @@ target_link_libraries(ILink3Router PRIVATE ILink3Lib SecDefLib)
 # Live: the whole trading-server seam — strategy wire protocol in, iLink3 out, states back.
 add_executable(CmeServerTests "ServerTests.cpp")
 target_link_libraries(CmeServerTests PRIVATE ServerLib)
+
+# Live: market-data connectivity probe — join a channel's multicast feeds and report arrivals.
+add_executable(Mdp3Probe "Mdp3ProbeTests.cpp")
+target_link_libraries(Mdp3Probe PRIVATE Mdp3Lib ILink3Lib)

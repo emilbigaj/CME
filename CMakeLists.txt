@@ -33,6 +33,9 @@ add_subdirectory ("SecDef")
 # Server composes iLink3 + SecDef into the HFT trading-server seam strategies connect to.
 add_subdirectory ("Server")
 
+# MDP3 receives CME market data (channel configuration, multicast feeds, book building).
+add_subdirectory ("MDP3")
+
 # All test executables (each links the libraries it exercises). Added last so every target above
 # is in scope.
 add_subdirectory ("Tests")
