@@ -93,6 +93,17 @@ public:
 		}
 	}
 
+	// Change the receive time limit on the open connection. Logon uses a generous limit (a
+	// reply is expected); a serving loop then shortens it so a quiet connection hands control
+	// back almost immediately instead of stalling the loop.
+	void SetReceiveTimeout(int milliseconds)
+	{
+		timeval timeout{};
+		timeout.tv_sec = milliseconds / 1000;
+		timeout.tv_usec = (milliseconds % 1000) * 1000;
+		::setsockopt(_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+	}
+
 	// Send the whole buffer, looping until every byte is accepted; throws on error or timeout.
 	void SendAll(std::span<const uint8_t> data)
 	{

@@ -83,6 +83,10 @@ public:
 	int32_t MarketSegmentId() const { return _segment.MarketSegmentID; }
 	uint64_t Uuid() const { return _uuid; }
 
+	// Shorten the receive time limit once logged on, so a serving loop that alternates between
+	// this gateway and other work is never stalled by a quiet connection.
+	void SetReceiveTimeout(int milliseconds) { _connection.SetReceiveTimeout(milliseconds); }
+
 	// Open the network connection to this segment's gateway (primary or backup).
 	void Connect()
 	{

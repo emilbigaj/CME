@@ -33,3 +33,7 @@ target_link_libraries(SecDefTests PRIVATE SecDefLib)
 # Live: feed the InstrumentRouter a server order intent; it sends an iLink3 order and reconciles.
 add_executable(ILink3Router "RouterTests.cpp")
 target_link_libraries(ILink3Router PRIVATE ILink3Lib SecDefLib)
+
+# Live: the whole trading-server seam — strategy wire protocol in, iLink3 out, states back.
+add_executable(CmeServerTests "ServerTests.cpp")
+target_link_libraries(CmeServerTests PRIVATE ServerLib)

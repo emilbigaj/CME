@@ -99,6 +99,24 @@ public:
 		}
 	}
 
+	// Pull the client order id out of any execution report, so the owner can route the message
+	// to the right instrument's router (the instrument id is packed inside the client order id).
+	// Returns false for message kinds that carry no per-order id.
+	static bool TryGetClientOrderId(const FramedMessage& message, uint64_t& clientOrderId)
+	{
+		switch (message.TemplateId)
+		{
+			case ExecutionReportNew::TemplateId:           return TryParseClientOrderId(message.As<ExecutionReportNew>()->ClOrdID, clientOrderId);
+			case ExecutionReportReject::TemplateId:        return TryParseClientOrderId(message.As<ExecutionReportReject>()->ClOrdID, clientOrderId);
+			case ExecutionReportCancel::TemplateId:        return TryParseClientOrderId(message.As<ExecutionReportCancel>()->ClOrdID, clientOrderId);
+			case ExecutionReportModify::TemplateId:        return TryParseClientOrderId(message.As<ExecutionReportModify>()->ClOrdID, clientOrderId);
+			case ExecutionReportTradeOutright::TemplateId: return TryParseClientOrderId(message.As<ExecutionReportTradeOutright>()->ClOrdID, clientOrderId);
+			case OrderCancelReject::TemplateId:            return TryParseClientOrderId(message.As<OrderCancelReject>()->ClOrdID, clientOrderId);
+			case OrderCancelReplaceReject::TemplateId:     return TryParseClientOrderId(message.As<OrderCancelReplaceReject>()->ClOrdID, clientOrderId);
+			default: return false;
+		}
+	}
+
 	// Reconcile one decoded execution report and publish the resulting server event.
 	void OnExecutionReport(const FramedMessage& message)
 	{
