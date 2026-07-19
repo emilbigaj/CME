@@ -194,8 +194,8 @@ public:
 				throw std::runtime_error("CmeServer: channel " + std::to_string(segment->Config.Channel) + " has no incremental feed");
 			segment->Receiver.Join(feed->Ip, feed->Port, _config.MarketDataInterfaceIp);
 
-			std::cout << "CmeServer: segment " << segment->Config.MarketSegmentID
-			          << " up — gateway session open, market data " << feed->Id
+			std::cout << "CmeServer: " << segment->Config.Name << " (segment " << segment->Config.MarketSegmentID
+			          << ") up — gateway session open, market data " << feed->Id
 			          << " (" << feed->Ip << ":" << feed->Port << "), core group " << segment->Config.CoreGroupId << "\n";
 		}
 

@@ -68,7 +68,7 @@ int main(int argc, char** argv)
 		serverConfig.ServerName = "CME";
 		serverConfig.MarketDataInterfaceIp = "10.210.19.34";
 		Server::MarketSegments marketSegments;
-		marketSegments.Segments = {Server::MarketSegment{/*MarketSegmentID*/ 64, /*Channel*/ 310,
+		marketSegments.Segments = {Server::MarketSegment{"S&P 500", /*MarketSegmentID*/ 64, /*Channel*/ 310,
 			/*CoreGroupId*/ 2, /*MarketDataCore*/ 8, /*ExecutionCore*/ 9}};
 		Server::CmeServer cme(serverConfig, marketSegments, config, secdef, channels);
 		const int32_t instrumentHeaderId = cme.FindInstrumentHeaderId(securityId);

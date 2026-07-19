@@ -23,9 +23,11 @@
 namespace Server
 {
 
-// One market segment: the venue identities it joins, and the machine resources it owns.
+// One market segment: its name, the venue identities it joins, and the machine resources it
+// owns.
 struct MarketSegment
 {
+	std::string Name;               // what this segment is called, e.g. "S&P 500"
 	int32_t MarketSegmentID = 0;    // the order-entry gateway (iLink3 market segment)
 	int32_t Channel = 0;            // the market-data channel publishing its products
 	int32_t CoreGroupId = 0;        // the shared-memory channel strategies reach it on (1..7)
@@ -41,6 +43,7 @@ struct MarketSegment
 	{
 		using T = MarketSegment;
 		static constexpr auto value = glz::object(
+			"Name", &T::Name,
 			"MarketSegmentID", &T::MarketSegmentID,
 			"Channel", &T::Channel,
 			"CoreGroupId", &T::CoreGroupId,
@@ -64,6 +67,8 @@ struct MarketSegments
 		// Step 2: Each fully specified, core groups distinct and in range.
 		for (const MarketSegment& segment : Segments)
 		{
+			if (segment.Name.empty())
+				throw std::invalid_argument("MarketSegments: a segment needs a Name");
 			if (segment.MarketSegmentID <= 0 || segment.Channel <= 0)
 				throw std::invalid_argument("MarketSegments: a segment needs MarketSegmentID and Channel");
 			if (segment.CoreGroupId < 1 || segment.CoreGroupId > 7)

@@ -1,6 +1,7 @@
 {
    "MarketSegments": [
       {
+         "Name": "S&P 500",
          "MarketSegmentID": 64,
          "Channel": 310,
          "CoreGroupId": 2,
