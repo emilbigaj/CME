@@ -61,8 +61,9 @@ class BookBuilder
 		bool Dirty = false;
 	};
 
-	std::vector<Instrument> _instruments;   // sorted by SecurityID for the hot lookup
+	std::vector<Instrument> _instruments;   // in subscription order — slots stay stable
 	std::vector<Pending> _pending;          // parallel to _instruments
+	std::vector<int32_t> _bySecurityId;     // slot numbers sorted by SecurityID, for the hot lookup
 	std::vector<int32_t> _dirty;            // which instruments the current event touched
 
 	// The published tick is assembled here — big enough for a full event on both sides.
@@ -78,8 +79,10 @@ public:
 	uint64_t RptSeqGaps = 0;        // per-instrument update-sequence gaps seen
 	uint64_t UnhandledActions = 0;  // window-shift deletes and book resets, not yet modelled
 
-	// Register an instrument before the feed starts (cold). tickSize is the conventional tick,
-	// displayFactor the exchange's raw-to-conventional scale — the same pair the order path uses.
+	// Register an instrument (cold; called between packets by the owning thread). tickSize is
+	// the conventional tick, displayFactor the exchange's raw-to-conventional scale — the same
+	// pair the order path uses. Slots are stable: a new subscription never disturbs the pending
+	// event state of the existing ones.
 	void Subscribe(int32_t securityId, int32_t instrumentId, double tickSize, double displayFactor)
 	{
 		Instrument instrument;
@@ -87,9 +90,12 @@ public:
 		instrument.InstrumentId = instrumentId;
 		instrument.GlobexTickMantissa = static_cast<int64_t>(std::llround(tickSize / displayFactor)) * 1'000'000'000LL;
 		_instruments.push_back(instrument);
-		std::sort(_instruments.begin(), _instruments.end(),
-			[](const Instrument& a, const Instrument& b) { return a.SecurityID < b.SecurityID; });
-		_pending.assign(_instruments.size(), Pending{});
+		_pending.push_back(Pending{});
+		_bySecurityId.push_back(static_cast<int32_t>(_instruments.size()) - 1);
+		std::sort(_bySecurityId.begin(), _bySecurityId.end(), [this](int32_t a, int32_t b)
+		{
+			return _instruments[static_cast<size_t>(a)].SecurityID < _instruments[static_cast<size_t>(b)].SecurityID;
+		});
 		_dirty.reserve(_instruments.size());
 	}
 
@@ -135,17 +141,18 @@ public:
 
 private:
 	// The subscription slot for an exchange id, or -1 if not subscribed. Binary search over the
-	// small sorted array: no hashing, a handful of predictable compares.
+	// small sorted index: no hashing, a handful of predictable compares.
 	int32_t Find(int32_t securityId) const
 	{
 		int32_t low = 0;
-		int32_t high = static_cast<int32_t>(_instruments.size()) - 1;
+		int32_t high = static_cast<int32_t>(_bySecurityId.size()) - 1;
 		while (low <= high)
 		{
 			const int32_t middle = (low + high) / 2;
-			const int32_t at = _instruments[static_cast<size_t>(middle)].SecurityID;
+			const int32_t slot = _bySecurityId[static_cast<size_t>(middle)];
+			const int32_t at = _instruments[static_cast<size_t>(slot)].SecurityID;
 			if (at == securityId)
-				return middle;
+				return slot;
 			if (at < securityId)
 				low = middle + 1;
 			else

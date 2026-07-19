@@ -7,7 +7,7 @@
 //
 // The server side normally runs beside a logging server; here a stub accepts its connections.
 //
-//   CmeServerTests <settings.json> <secdef.dat> <securityId>
+//   CmeServerTests <settings.json> <secdef.dat> <config.xml> <securityId>
 
 #include "CmeServer.hpp"
 #include "ILink3Config.hpp"
@@ -42,12 +42,12 @@ static bool ReadOne(Socket::ClientSocket& socket, int32_t channelId, std::span<c
 
 int main(int argc, char** argv)
 {
-	if (argc < 4)
+	if (argc < 5)
 	{
-		std::cerr << "usage: CmeServerTests <settings.json> <secdef.dat> <securityId>\n";
+		std::cerr << "usage: CmeServerTests <settings.json> <secdef.dat> <config.xml> <securityId>\n";
 		return 2;
 	}
-	const int32_t securityId = std::stoi(argv[3]);
+	const int32_t securityId = std::stoi(argv[4]);
 
 	try
 	{
@@ -55,6 +55,7 @@ int main(int argc, char** argv)
 		// server accepting the connections a real logging server normally takes.
 		ILink3::ILink3Config config = ILink3::ILink3Config::Load(argv[1]);
 		SecDef::SecDefFile secdef = SecDef::SecDefFile::Load(argv[2]);
+		Mdp3::ChannelConfig channels = Mdp3::ChannelConfig::Load(argv[3]);
 		const std::filesystem::path serverDirectory = Provider::ServerContext::GetDirectoryPath("CME");
 		Socket::ServerSocket loggingStub(Provider::Context::GetLoggingServerDirectoryPath(serverDirectory).string(), 8);
 		loggingStub.Listen();
@@ -62,8 +63,14 @@ int main(int argc, char** argv)
 		// otherwise terminates the process during unwind.
 		struct StubGuard { Socket::ServerSocket& Stub; ~StubGuard() { Stub.Dispose(); } } stubGuard{loggingStub};
 
-		// Step 2: Start the CME server: E-mini S&P segment 64 on core group 2, root ES.
-		Server::CmeServer cme(config, secdef, {{/*MarketSegmentID*/ 64, /*CoreGroupId*/ 2}}, {"ES"}, "CME");
+		// Step 2: Start the CME server: the E-mini S&P segment on core group 2.
+		Server::CmeServerConfig serverConfig;
+		serverConfig.ServerName = "CME";
+		serverConfig.MarketDataInterfaceIp = "10.210.19.34";
+		Server::MarketSegments marketSegments;
+		marketSegments.Segments = {Server::MarketSegment{/*MarketSegmentID*/ 64, /*Channel*/ 310,
+			/*CoreGroupId*/ 2, /*MarketDataCore*/ 8, /*ExecutionCore*/ 9}};
+		Server::CmeServer cme(serverConfig, marketSegments, config, secdef, channels);
 		const int32_t instrumentHeaderId = cme.FindInstrumentHeaderId(securityId);
 		if (instrumentHeaderId < 0)
 		{

@@ -2,3 +2,5 @@
 // commands for it and runs any static assertions in its headers.
 
 #include "CmeServer.hpp"
+#include "CmeServerConfig.hpp"
+#include "MarketSegments.hpp"

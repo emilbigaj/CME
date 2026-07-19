@@ -1,0 +1,11 @@
+{
+   "MarketSegments": [
+      {
+         "MarketSegmentID": 64,
+         "Channel": 310,
+         "CoreGroupId": 2,
+         "MarketDataCore": 8,
+         "ExecutionCore": 9
+      }
+   ]
+}
