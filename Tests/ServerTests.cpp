@@ -45,11 +45,15 @@ int main(int argc, char** argv)
 {
 	if (argc < 5)
 	{
-		std::cerr << "usage: CmeServerTests <settings.json> <secdef.dat> <config.xml> <securityId>\n";
+		std::cerr << "usage: CmeServerTests <settings.json> <secdef.dat> <config.xml> <securityId> [ticksBelowBid=0] [leave]\n";
 		return 2;
 	}
 	const int32_t securityId = std::stoi(argv[4]);
 	const int32_t ticksBelowBid = (argc > 5) ? std::stoi(argv[5]) : 0;
+	// Leave the working order in place (skip the cancel): on disconnect CME cancels it and
+	// publishes the cancel report into the closed session — the next run must recover it by
+	// retransmission, which is exactly what this mode exists to prove.
+	const bool leaveOrder = argc > 6 && std::string(argv[6]) == "leave";
 
 	try
 	{
@@ -188,6 +192,15 @@ int main(int argc, char** argv)
 							std::this_thread::sleep_for(std::chrono::milliseconds(5));
 						}
 						std::cout << "QuantityAhead (order state) = " << quantityAhead << std::endl;
+
+						// Leave mode ends here with the order still working; disconnecting
+						// hands it to cancel-on-disconnect for the next run to recover.
+						if (leaveOrder)
+						{
+							std::cout << "Leaving the order working (retransmission test)." << std::endl;
+							done = true;
+							break;
+						}
 
 						// A cancel carries the empty cancel profile — a next-revision target with
 						// the same profile as the working state reads as a no-op and is discarded.

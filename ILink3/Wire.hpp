@@ -324,6 +324,24 @@ inline size_t EncodeSequence(uint64_t uuid, uint32_t nextSeqNo, std::span<uint8_
 	return FrameMessage(dst, Sequence::TemplateId, Sequence::BlockLength, &sequence, sizeof(sequence), 0);
 }
 
+// Build a framed RetransmitRequest(508): ask CME to resend `count` of its business messages
+// starting at `fromSeqNo` — the recovery step after a reconnect shows we missed some. Both
+// session id fields carry the same id (recovery within the current session). Like Sequence
+// it is not signed and has no trailing field. Returns bytes written.
+inline size_t EncodeRetransmitRequest(uint64_t uuid, uint32_t fromSeqNo, uint16_t count, std::span<uint8_t> dst)
+{
+	// Step 1: Fill the small body.
+	RetransmitRequest request{};
+	request.UUID = uuid;
+	request.LastUUID = uuid;
+	request.RequestTimestamp = RequestTimestampNow();
+	request.FromSeqNo = fromSeqNo;
+	request.MsgCount = count;
+
+	// Step 2: Frame it (no trailing bytes).
+	return FrameMessage(dst, RetransmitRequest::TemplateId, RetransmitRequest::BlockLength, &request, sizeof(request), 0);
+}
+
 // A pointer to one complete message that has been located inside a receive buffer. It does
 // not own the bytes — it just marks where the message is and how to read it.
 struct FramedMessage

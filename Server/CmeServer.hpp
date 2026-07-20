@@ -26,6 +26,7 @@
 #include "ILink3Config.hpp"
 #include "CmeLogger.hpp"
 #include "MarketSegmentGateway.hpp"
+#include "SessionStore.hpp"
 #include "InstrumentRouter.hpp"
 #include "SecDefFile.hpp"
 #include "BookBuilder.hpp"
@@ -149,7 +150,8 @@ public:
 
 			ILink3::CmeLogger& logger = _loggerManager.NewLogger(
 				ILink3::CmeLoggerManager::LogDirectory("/mnt/S", _ilink3Config.Environment, segmentConfig.MarketSegmentID), segmentConfig.MarketSegmentID);
-			segment->Gateway = std::make_unique<ILink3::MarketSegmentGateway>(_ilink3Config, segmentConfig.MarketSegmentID, &logger);
+			segment->Gateway = std::make_unique<ILink3::MarketSegmentGateway>(_ilink3Config, segmentConfig.MarketSegmentID, &logger,
+				/*useSecondary*/ false, ILink3::SessionStore::Directory("/mnt/S", _ilink3Config.Environment));
 			segment->Gateway->OnBusinessMessage = [this](const ILink3::FramedMessage& message)
 			{
 				DispatchExecutionReport(message);
@@ -335,7 +337,9 @@ private:
 		if (serviceSegmentId == 0)
 			return 0;
 
-		// Step 2: Open a session to the service gateway, register, and close it again.
+		// Step 2: Open a session to the service gateway, register, and close it again. This
+		// session is deliberately ephemeral (no session directory): nothing recoverable flows
+		// on it, and a fresh id per run keeps each registration collision-free.
 		try
 		{
 			ILink3::CmeLogger& logger = _loggerManager.NewLogger(

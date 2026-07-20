@@ -8,18 +8,23 @@
 // the kernel-socket connection for the kernel-bypass one in production changes nothing here.
 //
 // The session state is kept directly in this class rather than a separate object, because it
-// is meaningless without the connection it rides on. Recovery of missed messages
-// (retransmission after a gap) is not handled yet — noted at the points where it belongs.
+// is meaningless without the connection it rides on. Given a session directory the state is
+// also persistent: CME expects one session id per trading week, so a restart resumes the
+// same session — sequence counters carry on, and messages CME published while we were away
+// (an order cancelled on disconnect, say) are recovered by retransmission at logon.
 
 #include "ILink3Config.hpp"
 #include "ILink3Sbe.hpp"
 #include "CmeLogger.hpp"
+#include "SessionStore.hpp"
 #include "TcpConnection.hpp"
 #include "Wire.hpp"
 #include "Timestamp.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <span>
@@ -53,7 +58,9 @@ class MarketSegmentGateway
 	uint64_t _partyDetailsListId = 0;   // non-zero once the parties are pre-registered; 0 = on-demand
 	uint32_t _outboundSeqNo = 1;        // next business message number we will send
 	uint32_t _inboundSeqNo = 1;         // next business message number we expect from CME
+	uint32_t _retransmitPending = 0;    // recovered messages still owed; they replay old numbers
 	int64_t _lastSendNanos = 0;         // when we last sent anything, for the keep-alive clock
+	SessionStore _sessionStore;         // when open, the session id and counters survive restarts
 
 	// ---- buffers reused every message (no per-message allocation) ----
 	std::array<uint8_t, 512> _sendBuffer{};
@@ -67,7 +74,11 @@ public:
 	std::function<void(const FramedMessage&)> OnBusinessMessage;
 
 	// Build a gateway for one market segment. Looks up that segment's addresses in the config.
-	MarketSegmentGateway(const ILink3Config& config, int32_t marketSegmentId, CmeLogger* logger, bool useSecondary = false)
+	// A session directory makes the session persistent: the week's id and sequence counters
+	// live in a file there, so a restart resumes the same session and recovers what it missed.
+	// Without one (the default) every logon starts a fresh session.
+	MarketSegmentGateway(const ILink3Config& config, int32_t marketSegmentId, CmeLogger* logger,
+	                     bool useSecondary = false, const std::filesystem::path& sessionDirectory = {})
 		: _config(config), _useSecondary(useSecondary), _logger(logger)
 	{
 		// Step 1: Resolve the market segment; without it there is nothing to connect to.
@@ -76,7 +87,11 @@ public:
 			throw std::invalid_argument("MarketSegmentGateway: market segment " + std::to_string(marketSegmentId) + " not in config");
 		_segment = *segment;
 
-		// Step 2: Size the receive buffer once.
+		// Step 2: Map the persistent session state when asked for.
+		if (!sessionDirectory.empty())
+			_sessionStore.Open(sessionDirectory, marketSegmentId);
+
+		// Step 3: Size the receive buffer once.
 		_recvBuffer.reserve(64 * 1024);
 	}
 
@@ -100,41 +115,96 @@ public:
 		_state = SessionState::Connected;
 	}
 
-	// Log in: Negotiate then Establish. On success the sequenced session is open. Returns true
-	// if EstablishmentAck came back, false on any rejection or unexpected reply.
+	// Log in. A persistent gateway resumes the trading week's session — same id, sequence
+	// counters carrying on — which is what CME expects between weekly resets: Negotiate is
+	// sent only the first time an id is used, and after the EstablishmentAck any messages CME
+	// published while we were away are asked for again. An ephemeral gateway (no session
+	// directory) starts a fresh session every time. Returns true once the sequenced session
+	// is open.
 	bool Logon()
 	{
-		// Step 1: A fresh session id for this run; both logon messages must carry the same one.
-		// Any party registration belonged to the previous session — start on-demand again.
-		_uuid = MakeUuid();
-		_partyDetailsListId = 0;
-		_outboundSeqNo = 1;
-		_inboundSeqNo = 1;
-
-		// Step 2: Send Negotiate and require a NegotiationResponse in reply.
-		SendFramed(EncodeNegotiate(_config, _uuid, RequestTimestampNow(), _sendBuffer));
-		FramedMessage message{};
-		if (!ReceiveMessage(message))
-			return false;
-		if (message.TemplateId != NegotiationResponse::TemplateId)
+		// Step 1: Adopt the session identity: the stored one when it belongs to this trading
+		// week, a fresh one otherwise (both streams from 1). Party registration is per run.
+		const bool resuming = _sessionStore.IsOpen() && _sessionStore.SameWeek() && _sessionStore.State().Uuid != 0;
+		if (resuming)
 		{
-			ReportUnexpected("Negotiate", message);
-			return false;
+			_uuid = _sessionStore.State().Uuid;
+			_outboundSeqNo = _sessionStore.State().OutboundSeqNo;
+			_inboundSeqNo = _sessionStore.State().InboundSeqNo;
+			std::cout << "Resuming session " << _uuid << " (outbound " << _outboundSeqNo
+			          << ", inbound " << _inboundSeqNo << ").\n";
+		}
+		else
+		{
+			_uuid = MakeUuid();
+			_outboundSeqNo = 1;
+			_inboundSeqNo = 1;
+			if (_sessionStore.IsOpen())
+				_sessionStore.BeginWeek(_uuid);
+		}
+		_partyDetailsListId = 0;
+		_retransmitPending = 0;
+
+		// Step 2: Negotiate — but only once per session id: a resumed id that CME already
+		// confirmed skips straight to Establish. If our record says unconfirmed yet CME
+		// disagrees (a crash between its answer and our note of it), carry on to Establish.
+		FramedMessage message{};
+		if (!resuming || _sessionStore.State().Negotiated == 0)
+		{
+			SendFramed(EncodeNegotiate(_config, _uuid, RequestTimestampNow(), _sendBuffer));
+			if (!ReceiveMessage(message))
+				return false;
+			if (message.TemplateId == NegotiationResponse::TemplateId)
+			{
+				if (_sessionStore.IsOpen())
+					_sessionStore.State().Negotiated = 1;
+			}
+			else if (resuming && message.TemplateId == NegotiationReject::TemplateId)
+			{
+				std::cout << "Negotiate rejected for resumed session (likely already negotiated); trying Establish: "
+				          << message.As<NegotiationReject>()->ToString() << "\n";
+			}
+			else
+			{
+				ReportUnexpected("Negotiate", message);
+				return false;
+			}
 		}
 
-		// Step 3: Send Establish (outbound sequence starts at 1) and require an
-		// EstablishmentAck. CME echoes back the keep-alive interval it accepted.
+		// Step 3: Send Establish carrying our next outbound number and require an
+		// EstablishmentAck. A resumed session CME no longer recognizes cannot be repaired —
+		// forget it and log in once more from scratch.
 		SendFramed(EncodeEstablish(_config, _uuid, RequestTimestampNow(), _outboundSeqNo, _sendBuffer));
 		if (!ReceiveMessage(message))
 			return false;
 		if (message.TemplateId != EstablishmentAck::TemplateId)
 		{
 			ReportUnexpected("Establish", message);
+			if (resuming)
+			{
+				std::cout << "Discarding the stored session and starting the week over.\n";
+				_sessionStore.Clear();
+				return Logon();
+			}
 			return false;
 		}
 
-		// Step 4: Session is open. Start the keep-alive clock from this last send.
+		// Step 4: Session is open (the keep-alive clock starts from this last send). The ack
+		// names CME's next outbound number; on a resume, anything between our counter and it
+		// was published while we were away — ask for it again. The recovered copies replay
+		// their original numbers, so the live counter jumps ahead to the ack's now.
 		_state = SessionState::Established;
+		const EstablishmentAck* ack = message.As<EstablishmentAck>();
+		if (resuming && ack->NextSeqNo > _inboundSeqNo)
+		{
+			const uint32_t gap = ack->NextSeqNo - _inboundSeqNo;
+			const uint16_t count = static_cast<uint16_t>(std::min<uint32_t>(gap, 2500));
+			std::cout << "Missed " << gap << " messages while away; requesting retransmission.\n";
+			SendFramed(EncodeRetransmitRequest(_uuid, _inboundSeqNo, count, _sendBuffer));
+			_retransmitPending = count;
+			_inboundSeqNo = ack->NextSeqNo;
+		}
+		PersistSequences();
 		return true;
 	}
 
@@ -145,12 +215,13 @@ public:
 	// order this session sends references it instead of dragging its own definition.
 	void SetPartyDetailsListId(uint64_t partyDetailsListId) { _partyDetailsListId = partyDetailsListId; }
 
-	// Register the trading parties under this session's own id. Meant for a session opened to
-	// the Order Entry Service Gateway (the dedicated CME segment that stores party lists for
-	// the firm) — a trading gateway only accepts id 0, so registration attempted there is
-	// always rejected. The id is the session uuid: unique per run, so a re-registration never
-	// collides with a list CME still holds from earlier in the week. On success trading
-	// sessions adopt the id via SetPartyDetailsListId; any reply other than an accepted
+	// Register the trading parties under a fresh id. Meant for a session opened to the Order
+	// Entry Service Gateway (the dedicated CME segment that stores party lists for the firm) —
+	// a trading gateway only accepts id 0, so registration attempted there is always rejected.
+	// The id is minted at the moment of registration, deliberately independent of the session
+	// id: session ids persist for the trading week, and a re-registration must never collide
+	// with a list CME still holds from an earlier run. On success trading sessions adopt the
+	// id via SetPartyDetailsListId; any reply other than an accepted
 	// PartyDetailsDefinitionRequestAck (a rejected status, a business reject, or silence)
 	// leaves this session at id 0 and returns false.
 	bool RegisterPartyDetails()
@@ -159,10 +230,13 @@ public:
 		if (_state != SessionState::Established)
 			return false;
 
-		// Step 2: Send the definition under the session id, as a sequenced business message.
-		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, _uuid, _outboundSeqNo,
-			static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+		// Step 2: Send the definition under a freshly minted id, as a sequenced business message.
+		const uint64_t registrationId = MakeUuid();
+		const size_t length = EncodePartyDetailsDefinitionRequest(_config.Parties, registrationId, _outboundSeqNo,
+			static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer);
 		++_outboundSeqNo;
+		PersistSequences();
+		SendFramed(length);
 
 		// Step 3: Wait for the reply, letting session-layer messages pass: a heartbeat is
 		// skipped, a terminate closes the session and gives up.
@@ -193,14 +267,15 @@ public:
 			return false;
 		}
 		++_inboundSeqNo;
+		PersistSequences();
 
 		// Step 5: Accepted means our id echoed back with status 0; adopt the id.
 		if (message.TemplateId == PartyDetailsDefinitionRequestAck::TemplateId)
 		{
 			const PartyDetailsDefinitionRequestAck* ack = message.As<PartyDetailsDefinitionRequestAck>();
-			if (ack->PartyDetailRequestStatus == 0 && ack->PartyDetailsListReqID == _uuid)
+			if (ack->PartyDetailRequestStatus == 0 && ack->PartyDetailsListReqID == registrationId)
 			{
-				_partyDetailsListId = _uuid;
+				_partyDetailsListId = registrationId;
 				std::cout << "Party details registered (id " << _partyDetailsListId << ").\n";
 				return true;
 			}
@@ -252,9 +327,11 @@ public:
 		// Step 2: On-demand only: define the parties for this order (id 0) as its own message.
 		if (_partyDetailsListId == 0)
 		{
-			SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
-				_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+			const size_t length = EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
+				_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer);
 			++_outboundSeqNo;
+			PersistSequences();
+			SendFramed(length);
 		}
 
 		// Step 3: Send the order referencing the session's party id. Stamp the fields the
@@ -262,8 +339,10 @@ public:
 		order.PartyDetailsListReqID = _partyDetailsListId;
 		order.SeqNum = _outboundSeqNo;
 		order.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
-		SendFramed(FrameMessage(_sendBuffer, NewOrderSingle::TemplateId, NewOrderSingle::BlockLength, &order, sizeof(order), 0));
+		const size_t length = FrameMessage(_sendBuffer, NewOrderSingle::TemplateId, NewOrderSingle::BlockLength, &order, sizeof(order), 0);
 		++_outboundSeqNo;
+		PersistSequences();
+		SendFramed(length);
 		return true;
 	}
 
@@ -280,17 +359,21 @@ public:
 		// Step 2: On-demand only: define the parties for this message (id 0) as its own message.
 		if (_partyDetailsListId == 0)
 		{
-			SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
-				_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+			const size_t length = EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
+				_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer);
 			++_outboundSeqNo;
+			PersistSequences();
+			SendFramed(length);
 		}
 
 		// Step 3: Send the cancel referencing the session's party id.
 		cancel.PartyDetailsListReqID = _partyDetailsListId;
 		cancel.SeqNum = _outboundSeqNo;
 		cancel.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
-		SendFramed(FrameMessage(_sendBuffer, OrderCancelRequest::TemplateId, OrderCancelRequest::BlockLength, &cancel, sizeof(cancel), 0));
+		const size_t length = FrameMessage(_sendBuffer, OrderCancelRequest::TemplateId, OrderCancelRequest::BlockLength, &cancel, sizeof(cancel), 0);
 		++_outboundSeqNo;
+		PersistSequences();
+		SendFramed(length);
 		return true;
 	}
 
@@ -307,17 +390,21 @@ public:
 		// Step 2: On-demand only: define the parties for this message (id 0) as its own message.
 		if (_partyDetailsListId == 0)
 		{
-			SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
-				_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+			const size_t length = EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
+				_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer);
 			++_outboundSeqNo;
+			PersistSequences();
+			SendFramed(length);
 		}
 
 		// Step 3: Send the replace referencing the session's party id.
 		replace.PartyDetailsListReqID = _partyDetailsListId;
 		replace.SeqNum = _outboundSeqNo;
 		replace.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
-		SendFramed(FrameMessage(_sendBuffer, OrderCancelReplaceRequest::TemplateId, OrderCancelReplaceRequest::BlockLength, &replace, sizeof(replace), 0));
+		const size_t length = FrameMessage(_sendBuffer, OrderCancelReplaceRequest::TemplateId, OrderCancelReplaceRequest::BlockLength, &replace, sizeof(replace), 0);
 		++_outboundSeqNo;
+		PersistSequences();
+		SendFramed(length);
 		return true;
 	}
 
@@ -420,6 +507,18 @@ private:
 		SendFramed(EncodeSequence(_uuid, _outboundSeqNo, _sendBuffer));
 	}
 
+	// Mirror the sequence counters into the persistent store. Callers advance a counter and
+	// persist BEFORE the message it numbers reaches the wire: the stored value can then only
+	// ever run ahead of what CME saw, and a crash replays as a benign gap (which NotApplied
+	// resolves) instead of a duplicated sequence number (which kills the session).
+	void PersistSequences()
+	{
+		if (!_sessionStore.IsOpen())
+			return;
+		_sessionStore.State().OutboundSeqNo = _outboundSeqNo;
+		_sessionStore.State().InboundSeqNo = _inboundSeqNo;
+	}
+
 	// Handle one received message by its kind: session-layer messages are dealt with here;
 	// business messages go to the callback.
 	void Dispatch(const FramedMessage& message)
@@ -443,13 +542,44 @@ private:
 				_state = SessionState::Disconnected;
 				break;
 			}
+			case NotApplied::TemplateId:
+			{
+				// CME saw a gap in OUR numbering (messages recorded as sent that never made
+				// the wire, e.g. across a crash). Business messages are never re-sent — a
+				// Sequence carrying our current next number tells CME to accept the gap.
+				std::cout << "CME NotApplied (filling the gap): " << message.As<NotApplied>()->ToString() << "\n";
+				SendKeepAlive();
+				break;
+			}
+			case Retransmission::TemplateId:
+			{
+				// CME granting a retransmit request; the recovered messages follow.
+				std::cout << "CME Retransmission: " << message.As<Retransmission>()->ToString() << "\n";
+				break;
+			}
+			case RetransmitReject::TemplateId:
+			{
+				// The recovery request failed — anything missed stays missed; make it loud.
+				std::cout << "CME RetransmitReject (missed messages NOT recovered): "
+				          << message.As<RetransmitReject>()->ToString() << "\n";
+				_retransmitPending = 0;
+				break;
+			}
 			default:
 			{
-				// A business message (execution report and the like). Track the inbound count
-				// and forward it. (Out-of-order detection and recovery belong here later.)
-				++_inboundSeqNo;
+				// A business message (execution report and the like): forward it, then count
+				// it — in that order, so a crash mid-handling re-recovers the message rather
+				// than losing it. Recovered copies replay their original numbers, which the
+				// live counter already jumped past at logon, so they are not counted again.
 				if (OnBusinessMessage)
 					OnBusinessMessage(message);
+				if (_retransmitPending > 0)
+					--_retransmitPending;
+				else
+				{
+					++_inboundSeqNo;
+					PersistSequences();
+				}
 				break;
 			}
 		}
