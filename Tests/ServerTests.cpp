@@ -49,6 +49,7 @@ int main(int argc, char** argv)
 		return 2;
 	}
 	const int32_t securityId = std::stoi(argv[4]);
+	const int32_t ticksBelowBid = (argc > 5) ? std::stoi(argv[5]) : 0;
 
 	try
 	{
@@ -133,7 +134,7 @@ int main(int argc, char** argv)
 				throw std::runtime_error("no live book within 10s");
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		}
-		const int32_t ticks = book.BestBid().Ticks;   // join the touch: real resting quantity ahead
+		const int32_t ticks = book.BestBid().Ticks - ticksBelowBid;   // 0 = join the touch; deeper tests the below-window path
 		std::cout << "Live book: best bid " << book.BestBid().Quantity << " x " << book.BestBid().Ticks * tickSize
 		          << ", joining " << ticks * tickSize << " (level quantity " << book.Bids.GetQuantity(ticks) << ")." << std::endl;
 
@@ -183,7 +184,7 @@ int main(int argc, char** argv)
 						{
 							quantityAhead = cme.Server().Context().GetOrderState(globalOrderIndex).GetReadonlyRef().QuantityAhead;
 							if (quantityAhead != 0)
-								break;
+								break;   // a real count, or -1 = unknown (below the visible window)
 							std::this_thread::sleep_for(std::chrono::milliseconds(5));
 						}
 						std::cout << "QuantityAhead (order state) = " << quantityAhead << std::endl;
