@@ -14,4 +14,4 @@ Version control:
 - Private repo: https://github.com/emilbigaj/CME  (branch: master)
 - Clone: git clone https://github.com/emilbigaj/CME.git
 - Auth: GitHub CLI (gh) is git's HTTPS credential helper for account emilbigaj, so push/pull just work (no token in-repo).
-- Secrets: Config/*/ILink3.json is gitignored (real CME credentials). The Cert + New Release configs were force-added into this PRIVATE repo, so their live keys are in git history. Production configs stay ignored by default — never commit them in plaintext; force-add deliberately or encrypt (git-crypt/SOPS) first.
+- Secrets: settings live OUTSIDE the repo at /mnt/S/CME/<Environment>/Config (ILink3.json with real CME credentials, CmeServer.json, MarketSegments.json, staged secdef.dat + config.xml; logs and session state sit beside them under Logs/ and Session/). Nothing under /mnt/S is version-controlled. NB the Cert + New Release keys WERE force-added here once, so they remain in git history — rotate them before ever making this repo less private. Never commit credentials; encrypt (git-crypt/SOPS) first if one must travel by git.
