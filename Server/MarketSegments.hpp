@@ -7,8 +7,8 @@
 // one core complex and its cache.
 //
 // The mapping is a property of the machine, not the environment — the same segment layout
-// serves New Release and Production — so it lives once at Config/MarketSegments.json and each
-// environment's server settings reference it.
+// serves New Release and Production — so each environment keeps an identical copy beside its
+// server settings (/mnt/S/CME/<Environment>/Config/MarketSegments.json), referenced from there.
 
 #include "Json.hpp"
 

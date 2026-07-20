@@ -3,5 +3,4 @@ build/
 compile_commands.json
 Secrets/
 *.secret
-Config/*/ILink3.json
 core*

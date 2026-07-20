@@ -3,7 +3,7 @@
 // The CME server's per-environment settings: its shared-memory name, the files it loads (the
 // order-entry settings, the instrument universe, the market-data channel configuration, and
 // the machine's market-segment layout), and the interface market data arrives on. There is
-// one settings file per environment at Config/<Environment>/CmeServer.json; the segment
+// one settings file per environment at /mnt/S/CME/<Environment>/Config/CmeServer.json; the segment
 // layout it references is machine-wide and shared by every environment.
 
 #include "Json.hpp"

@@ -1,9 +1,0 @@
-{
-   "ServerName": "CME",
-   "ILink3ConfigPath": "Config/NewRelease/ILink3.json",
-   "SecDefPath": "/mnt/S/CME/NewRelease/Config/secdef.dat",
-   "ChannelConfigPath": "/mnt/S/CME/NewRelease/Config/config.xml",
-   "MarketSegmentsPath": "Config/MarketSegments.json",
-   "MarketDataInterfaceIp": "10.210.19.34",
-   "StubLoggingServer": true
-}
