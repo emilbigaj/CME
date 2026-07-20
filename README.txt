@@ -11,7 +11,7 @@ Transport staging: bring up FIXP/SBE on Onload sockets first (correctness + cert
 Environments are config-driven: New Release (cert) and Production, one build.
 
 Version control:
-- Private repo: https://github.com/emilbigaj/CME  (branch: master)
+- Repo: https://github.com/emilbigaj/CME  (branch: master)
 - Clone: git clone https://github.com/emilbigaj/CME.git
 - Auth: GitHub CLI (gh) is git's HTTPS credential helper for account emilbigaj, so push/pull just work (no token in-repo).
-- Secrets: settings live OUTSIDE the repo at /mnt/S/CME/<Environment>/Config (ILink3.json with real CME credentials, CmeServer.json, MarketSegments.json, staged secdef.dat + config.xml; logs and session state sit beside them under Logs/ and Session/). Nothing under /mnt/S is version-controlled. NB the Cert + New Release keys WERE force-added here once, so they remain in git history — rotate them before ever making this repo less private. Never commit credentials; encrypt (git-crypt/SOPS) first if one must travel by git.
+- Secrets: settings live OUTSIDE the repo at /mnt/S/CME/<Environment>/Config (ILink3.json with real CME credentials, CmeServer.json, MarketSegments.json, staged secdef.dat + config.xml; logs and session state sit beside them under Logs/ and Session/). Nothing under /mnt/S is version-controlled and no credential has ever shipped in this history (rewritten + republished 2026-07-20 to guarantee it). Never commit credentials; encrypt (git-crypt/SOPS) first if one must travel by git.
