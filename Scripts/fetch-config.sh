@@ -12,7 +12,7 @@
 # CME regenerates secdef daily around 15:50 Chicago; run this in the 16:00-17:00
 # maintenance window, before the server (re)starts.
 #
-# Usage: fetch-data.sh [NewRelease|Cert|Production]   (default NewRelease)
+# Usage: fetch-config.sh [NewRelease|Cert|Production]   (default NewRelease)
 
 set -euo pipefail
 
@@ -23,7 +23,7 @@ case "$environment" in
 	NewRelease) ftpEnv="NRCert" ;;
 	Cert)       ftpEnv="Cert" ;;
 	Production) ftpEnv="Production" ;;
-	*) echo "usage: fetch-data.sh [NewRelease|Cert|Production]"; exit 2 ;;
+	*) echo "usage: fetch-config.sh [NewRelease|Cert|Production]"; exit 2 ;;
 esac
 configDir="/mnt/S/CME/$environment/Config"
 mkdir -p "$configDir"
