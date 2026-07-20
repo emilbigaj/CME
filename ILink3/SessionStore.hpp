@@ -10,7 +10,7 @@
 // write ordering keeps stored counters running ahead of the wire, never behind, so the
 // worst outcome is a benign sequence gap.
 //
-// File: <root>/Servers/CME/Session/<Environment>/MSGW_<id>.state
+// File: <root>/CME/<Environment>/Session/MSGW_<id>.state
 
 #include "ILink3Config.hpp"   // ILink3::Environment
 
@@ -52,7 +52,7 @@ public:
 	// The conventional directory for an environment's session files.
 	static std::filesystem::path Directory(const std::filesystem::path& root, ILink3::Environment environment)
 	{
-		return root / "Servers" / "CME" / "Session" / std::string(magic_enum::enum_name(environment));
+		return root / "CME" / std::string(magic_enum::enum_name(environment)) / "Session";
 	}
 
 	// Map the segment's state file, creating it (zeroed, = fresh) when absent.

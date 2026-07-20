@@ -15,7 +15,7 @@
 // missing log line is harmless; a stalled order is not.
 //
 // One background thread drains all connections' queues in turn. Files live at
-//   /mnt/S/Servers/CME<Environment>/Logs/MSGW_<id>/<date>.log
+//   /mnt/S/CME/<Environment>/Logs/MSGW_<id>/<date>.log
 
 #include "ILink3Config.hpp"
 #include "ILink3Sbe.hpp"        // ToObjectType, ToJsonLine
@@ -273,14 +273,14 @@ public:
 	CmeLoggerManager(const CmeLoggerManager&) = delete;
 	CmeLoggerManager& operator=(const CmeLoggerManager&) = delete;
 
-	// Standard log directory for one connection: <root>/Servers/CME/Logs/<Environment>/MSGW_<id>.
+	// Standard log directory for one connection: <root>/CME/<Environment>/Logs/MSGW_<id>.
 	// The environment name comes from the enum itself (via magic_enum, the same mechanism glaze
 	// uses), so it always matches the enum with no separate table to keep in sync.
 	static std::filesystem::path LogDirectory(const std::filesystem::path& root, ILink3::Environment environment, int32_t marketSegmentId)
 	{
-		return root / "Servers" / "CME" / "Logs"
+		return root / "CME"
 			/ std::string(magic_enum::enum_name(environment))
-			/ ("MSGW_" + std::to_string(marketSegmentId));
+			/ "Logs" / ("MSGW_" + std::to_string(marketSegmentId));
 	}
 
 	// Create and register a logger for one connection, keyed by its directory, and return a
