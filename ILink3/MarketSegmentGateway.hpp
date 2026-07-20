@@ -50,6 +50,7 @@ class MarketSegmentGateway
 	TcpConnection _connection;
 	SessionState _state = SessionState::Disconnected;
 	uint64_t _uuid = 0;                 // this session's id; the same value signs both logon messages
+	uint64_t _partyDetailsListId = 0;   // non-zero once the parties are pre-registered; 0 = on-demand
 	uint32_t _outboundSeqNo = 1;        // next business message number we will send
 	uint32_t _inboundSeqNo = 1;         // next business message number we expect from CME
 	int64_t _lastSendNanos = 0;         // when we last sent anything, for the keep-alive clock
@@ -104,7 +105,9 @@ public:
 	bool Logon()
 	{
 		// Step 1: A fresh session id for this run; both logon messages must carry the same one.
+		// Any party registration belonged to the previous session — start on-demand again.
 		_uuid = MakeUuid();
+		_partyDetailsListId = 0;
 		_outboundSeqNo = 1;
 		_inboundSeqNo = 1;
 
@@ -132,8 +135,17 @@ public:
 
 		// Step 4: Session is open. Start the keep-alive clock from this last send.
 		_state = SessionState::Established;
-		return true;
+
+		// Step 5: Try to register the parties once for the whole session, so orders reference
+		// the registered id instead of each dragging its own definition. An environment not
+		// provisioned for pre-registration rejects this and the session stays on-demand — the
+		// logon itself never fails over it.
+		RegisterPartyDetails();
+		return _state == SessionState::Established;
 	}
+
+	// Non-zero once the parties were pre-registered at logon; 0 means on-demand mode.
+	uint64_t PartyDetailsListId() const { return _partyDetailsListId; }
 
 	// Diagnostic: send one PartyDetailsDefinitionRequest with an explicit party id (0 allowed)
 	// and print CME's reply, to probe which id values the session accepts. Returns the reply's
@@ -161,25 +173,28 @@ public:
 		return message.TemplateId;
 	}
 
-	// Send a new order using on-demand party details, which is what this session supports: a
-	// PartyDetailsDefinitionRequest carrying the parties (id 0) is sent immediately before the
-	// order, and the order references id 0 — CME applies the just-defined parties to it. The
-	// caller only fills the order details; the gateway stamps the party id, sequence numbers,
-	// and send times. Returns false if the session is not open.
+	// Send a new order. A session with pre-registered parties sends just the order, referencing
+	// the registered id. An on-demand session pairs it with a PartyDetailsDefinitionRequest
+	// carrying the parties (id 0) sent immediately before — CME applies the just-defined parties
+	// to it. The caller only fills the order details; the gateway stamps the party id, sequence
+	// numbers, and send times. Returns false if the session is not open.
 	bool SendNewOrderSingle(NewOrderSingle order)
 	{
 		// Step 1: Only send on an open session.
 		if (_state != SessionState::Established)
 			return false;
 
-		// Step 2: Define the parties for this order (id 0), as its own sequenced message.
-		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
-			_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
-		++_outboundSeqNo;
+		// Step 2: On-demand only: define the parties for this order (id 0) as its own message.
+		if (_partyDetailsListId == 0)
+		{
+			SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
+				_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+			++_outboundSeqNo;
+		}
 
-		// Step 3: Send the order referencing id 0, right behind the definition. Stamp the fields
-		// the gateway owns: this message's sequence number and send time.
-		order.PartyDetailsListReqID = 0;
+		// Step 3: Send the order referencing the session's party id. Stamp the fields the
+		// gateway owns: this message's sequence number and send time.
+		order.PartyDetailsListReqID = _partyDetailsListId;
 		order.SeqNum = _outboundSeqNo;
 		order.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
 		SendFramed(FrameMessage(_sendBuffer, NewOrderSingle::TemplateId, NewOrderSingle::BlockLength, &order, sizeof(order), 0));
@@ -187,23 +202,26 @@ public:
 		return true;
 	}
 
-	// Send an order cancel. With on-demand party details, every order-management message carries
-	// id 0 and must be immediately preceded by a party-details definition — the cancel included —
-	// so this sends the 518 then the cancel. The gateway stamps the sequence numbers and send
-	// times. Returns false if the session is not open.
+	// Send an order cancel. Every order-management message carries the session's party id — the
+	// cancel included — so a pre-registered session sends just the cancel, and an on-demand
+	// session pairs it with a party-details definition (id 0) sent immediately before. The
+	// gateway stamps the sequence numbers and send times. Returns false if the session is not open.
 	bool SendOrderCancel(OrderCancelRequest cancel)
 	{
 		// Step 1: Only send on an open session.
 		if (_state != SessionState::Established)
 			return false;
 
-		// Step 2: Define the parties for this message (id 0), as its own sequenced message.
-		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
-			_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
-		++_outboundSeqNo;
+		// Step 2: On-demand only: define the parties for this message (id 0) as its own message.
+		if (_partyDetailsListId == 0)
+		{
+			SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
+				_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+			++_outboundSeqNo;
+		}
 
-		// Step 3: Send the cancel referencing id 0, right behind the definition.
-		cancel.PartyDetailsListReqID = 0;
+		// Step 3: Send the cancel referencing the session's party id.
+		cancel.PartyDetailsListReqID = _partyDetailsListId;
 		cancel.SeqNum = _outboundSeqNo;
 		cancel.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
 		SendFramed(FrameMessage(_sendBuffer, OrderCancelRequest::TemplateId, OrderCancelRequest::BlockLength, &cancel, sizeof(cancel), 0));
@@ -212,22 +230,25 @@ public:
 	}
 
 	// Send an order replace (new price/size for a working order). Like every order-management
-	// message in on-demand mode, it is paired with a party-details definition (id 0) sent
-	// immediately before it. The gateway stamps the sequence numbers and send times. Returns
-	// false if the session is not open.
+	// message it carries the session's party id; an on-demand session pairs it with a
+	// party-details definition (id 0) sent immediately before it. The gateway stamps the
+	// sequence numbers and send times. Returns false if the session is not open.
 	bool SendOrderCancelReplace(OrderCancelReplaceRequest replace)
 	{
 		// Step 1: Only send on an open session.
 		if (_state != SessionState::Established)
 			return false;
 
-		// Step 2: Define the parties for this message (id 0), as its own sequenced message.
-		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
-			_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
-		++_outboundSeqNo;
+		// Step 2: On-demand only: define the parties for this message (id 0) as its own message.
+		if (_partyDetailsListId == 0)
+		{
+			SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, /*partyDetailsListReqId*/ 0,
+				_outboundSeqNo, static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+			++_outboundSeqNo;
+		}
 
-		// Step 3: Send the replace referencing id 0, right behind the definition.
-		replace.PartyDetailsListReqID = 0;
+		// Step 3: Send the replace referencing the session's party id.
+		replace.PartyDetailsListReqID = _partyDetailsListId;
 		replace.SeqNum = _outboundSeqNo;
 		replace.SendingTimeEpoch = static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch);
 		SendFramed(FrameMessage(_sendBuffer, OrderCancelReplaceRequest::TemplateId, OrderCancelReplaceRequest::BlockLength, &replace, sizeof(replace), 0));
@@ -332,6 +353,68 @@ private:
 	void SendKeepAlive()
 	{
 		SendFramed(EncodeSequence(_uuid, _outboundSeqNo, _sendBuffer));
+	}
+
+	// Register the trading parties under this session's own id, right after logon. On success
+	// every order-management message references the id and no per-message definition is needed.
+	// The id is the session uuid: unique per session, so a re-login never collides with a list
+	// CME still holds from an earlier run of the week. Any reply other than an accepted
+	// PartyDetailsDefinitionRequestAck (a rejected status, a business reject, or silence) leaves
+	// _partyDetailsListId at 0 — the on-demand mode that pairs every message with a definition.
+	bool RegisterPartyDetails()
+	{
+		// Step 1: Send the definition under the session id, as a sequenced business message.
+		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, _uuid, _outboundSeqNo,
+			static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+		++_outboundSeqNo;
+
+		// Step 2: Wait for the reply, letting session-layer messages pass: a heartbeat is
+		// skipped, a terminate closes the session and gives up.
+		FramedMessage message{};
+		for (int attempt = 0; attempt < 5; ++attempt)
+		{
+			if (!ReceiveMessage(message))
+			{
+				std::cout << "Party pre-registration: no reply; staying on-demand.\n";
+				return false;
+			}
+			if (message.TemplateId == Sequence::TemplateId)
+				continue;
+			if (message.TemplateId == Terminate::TemplateId)
+			{
+				std::cout << "CME Terminate during party pre-registration: " << message.As<Terminate>()->ToString() << "\n";
+				_state = SessionState::Disconnected;
+				return false;
+			}
+			break;
+		}
+
+		// Step 3: Nothing but heartbeats means no reply; otherwise what came back is a
+		// sequenced business message — count it.
+		if (message.TemplateId == Sequence::TemplateId)
+		{
+			std::cout << "Party pre-registration: no reply; staying on-demand.\n";
+			return false;
+		}
+		++_inboundSeqNo;
+
+		// Step 4: Accepted means our id echoed back with status 0; adopt the id.
+		if (message.TemplateId == PartyDetailsDefinitionRequestAck::TemplateId)
+		{
+			const PartyDetailsDefinitionRequestAck* ack = message.As<PartyDetailsDefinitionRequestAck>();
+			if (ack->PartyDetailRequestStatus == 0 && ack->PartyDetailsListReqID == _uuid)
+			{
+				_partyDetailsListId = _uuid;
+				std::cout << "Party details pre-registered (id " << _partyDetailsListId << ").\n";
+				return true;
+			}
+		}
+
+		// Step 5: Rejected — print the decoded reply (the memo carries CME's reason) and stay
+		// on-demand.
+		std::cout << "Party pre-registration rejected; staying on-demand: "
+		          << ToObjectType(message.TemplateId) << ": " << ToJsonLine(message.TemplateId, message.Body) << "\n";
+		return false;
 	}
 
 	// Handle one received message by its kind: session-layer messages are dealt with here;
