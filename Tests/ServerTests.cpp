@@ -17,6 +17,7 @@
 #include "Order.hpp"
 #include "OrderIdAllocator.hpp"
 #include "SharedArray.hpp"
+#include "MarketByPrice.hpp"
 #include "Socket.hpp"
 #include "Timestamp.hpp"
 
@@ -117,12 +118,24 @@ int main(int argc, char** argv)
 			throw std::runtime_error("no algo-status reply");
 		std::cout << "Algo set live." << std::endl;
 
-		// Step 5: A resting buy a few ticks below the settle anchor, as the strategy would send
-		// it: claim a client order id, publish the target to the shared order-target slot, then
-		// send it on the segment's channel.
+		// Step 5: Join a real queue: wait for the live book, then rest one tick below the best
+		// bid — a level with genuine resting quantity ahead of us, so the published
+		// quantity-ahead is a real number. (One tick off the touch keeps the fill chance low.)
 		const SecDef::Loaded& instrument = *secdef.FindBySecurityId(securityId);
 		const double tickSize = instrument.Header.AsInstrumentHeader().TickSize;
-		const int32_t ticks = static_cast<int32_t>(std::floor(instrument.ReferencePrice / tickSize)) - 4;
+		Socket::SharedArray<Data::MarketByPrice64> books(serverDirectory.string() + "MarketsByPrice", 64, Tools::Access::Read);
+		Data::MarketByPrice64 book{};
+		const int64_t bookWait = Tools::Timestamp::UtcNow().NanosSinceEpoch;
+		while (book.Bids.Count() == 0)
+		{
+			book = books[instrumentId].Read();
+			if ((Tools::Timestamp::UtcNow().NanosSinceEpoch - bookWait) / 1'000'000'000LL >= 10)
+				throw std::runtime_error("no live book within 10s");
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+		const int32_t ticks = book.BestBid().Ticks;   // join the touch: real resting quantity ahead
+		std::cout << "Live book: best bid " << book.BestBid().Quantity << " x " << book.BestBid().Ticks * tickSize
+		          << ", joining " << ticks * tickSize << " (level quantity " << book.Bids.GetQuantity(ticks) << ")." << std::endl;
 
 		const int32_t ordersCapacity = 	Provider::ServerHeader{}.OrdersPerClient * 64;
 		Socket::SharedArray<Execution::OrderTarget> orderTargets(serverDirectory.string() + "OrderTargets", ordersCapacity, Tools::Access::Write, false);
@@ -162,6 +175,19 @@ int main(int argc, char** argv)
 						done = true;
 					else if (state.OrderHeader.Seq >= 1 && !cancelSent)
 					{
+						// The queue position lands in the shared order state (the strategy's real
+						// read path), on the market-data thread's clock — poll it briefly.
+						int32_t quantityAhead = 0;
+						const int64_t queueWait = Tools::Timestamp::UtcNow().NanosSinceEpoch;
+						while ((Tools::Timestamp::UtcNow().NanosSinceEpoch - queueWait) / 1'000'000'000LL < 3)
+						{
+							quantityAhead = cme.Server().Context().GetOrderState(globalOrderIndex).GetReadonlyRef().QuantityAhead;
+							if (quantityAhead != 0)
+								break;
+							std::this_thread::sleep_for(std::chrono::milliseconds(5));
+						}
+						std::cout << "QuantityAhead (order state) = " << quantityAhead << std::endl;
+
 						// A cancel carries the empty cancel profile — a next-revision target with
 						// the same profile as the working state reads as a no-op and is discarded.
 						target.OrderTargetAction = Execution::OrderTargetAction::Cancel;

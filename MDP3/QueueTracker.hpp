@@ -104,7 +104,7 @@ private:
 		int32_t NetBehind = 0;            // exact net joins behind us (for the window-entry fix)
 		int32_t LastLevelQuantity = 0;    // the level's total at the last event end
 		int32_t EventTraded = 0;          // traded at our price within the current event
-		int32_t PublishedAhead = UnknownQuantityAhead;
+		int32_t PublishedAhead = INT32_MIN;   // "never published": the first publish always lands
 		SlotState State = SlotState::Free;
 		int8_t IsBid = 0;
 		bool Seeded = false;              // false: below the window at arm — publish unknown
@@ -328,7 +328,8 @@ private:
 			if (order.LogOverflow)
 				++LogOverflows;
 			const int32_t level = ReadLevelQuantity(order.InstrumentId, order.IsBid != 0, order.Ticks);
-			if (level > 0 && IsPriceVisible(order.InstrumentId, order.IsBid != 0, order.Ticks))
+			const bool visible = IsPriceVisible(order.InstrumentId, order.IsBid != 0, order.Ticks);
+			if (level > 0 && visible)
 			{
 				order.QueueAhead = Clamp(level - order.OwnQuantity, level);
 				order.Seeded = true;
