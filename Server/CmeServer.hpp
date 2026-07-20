@@ -72,7 +72,21 @@ class CmeServer
 		std::array<Subscription, SubscriptionRingLength> Subscriptions;
 		std::atomic<uint32_t> SubscriptionsWritten{0};   // admin thread advances (release)
 		uint32_t SubscriptionsRead = 0;                  // market-data thread only
+
+		// Queue-tracking lifecycle commands from the execution thread, same shape of handoff.
+		static constexpr uint32_t QueueRingLength = 256;
+		std::array<Mdp3::QueueTracker::Command, QueueRingLength> QueueCommands;
+		std::atomic<uint32_t> QueueWritten{0};           // execution thread advances (release)
+		uint32_t QueueRead = 0;                          // market-data thread only
 	};
+
+	// Hand one queue-tracking command across a segment's ring.
+	static void PushQueueCommand(Segment& segment, const Mdp3::QueueTracker::Command& command)
+	{
+		const uint32_t written = segment.QueueWritten.load(std::memory_order_relaxed);
+		segment.QueueCommands[written % Segment::QueueRingLength] = command;
+		segment.QueueWritten.store(written + 1, std::memory_order_release);
+	}
 
 	// ---- configuration (set once) ----
 	CmeServerConfig _config;
@@ -147,6 +161,32 @@ public:
 			segment->Books.OnTrade = [this](const Data::Trade& trade)
 			{
 				_server.OnTrade(trade);
+			};
+
+			// The queue tracker reads the authoritative book (this market-data thread writes it,
+			// so the read is consistent) and publishes into the server-owned order state.
+			segment->Books.Queue.ReadLevelQuantity = [this](int32_t instrumentId, bool isBid, int32_t ticks)
+			{
+				const Data::MarketByPrice64& book = _server.Context().GetMarketByPrice64(instrumentId).GetReadonlyRef();
+				return isBid ? book.Bids.GetQuantity(ticks) : book.Asks.GetQuantity(ticks);
+			};
+			segment->Books.Queue.IsPriceVisible = [this](int32_t instrumentId, bool isBid, int32_t ticks)
+			{
+				// Visible when the side shows fewer levels than the exchange publishes (ten for
+				// our products), or when the price is at or better than the worst shown level.
+				const Data::MarketByPrice64& book = _server.Context().GetMarketByPrice64(instrumentId).GetReadonlyRef();
+				const Data::SideByPrice64& side = isBid ? book.Bids : book.Asks;
+				if (side.Count() < 10)
+					return true;
+				Data::SideByPrice64::Enumerator enumerator = side.GetEnumerator();
+				int32_t worst = 0;
+				for (int32_t n = 0; n < 10 && enumerator.MoveNext(); ++n)
+					worst = enumerator.Current().Ticks;
+				return isBid ? ticks >= worst : ticks <= worst;
+			};
+			segment->Books.Queue.OnQuantityAhead = [this](uint64_t clientOrderId, int32_t quantityAhead)
+			{
+				_server.OnQuantityAhead(clientOrderId, quantityAhead);
 			};
 
 			_segments.push_back(std::move(segment));
@@ -333,6 +373,48 @@ private:
 			Execution::OrderRejected copy = rejected;
 			_server.OnOrderRejected(copy, text);
 		};
+		// Step 3b: The order lifecycle feeds the queue tracker across the segment's ring: sent
+		// starts the pending log at the price, the acknowledgment reconciles it, partial fills
+		// shrink our size, and done frees the slot.
+		Segment* segmentPointer = segment;
+		const int32_t securityId = loaded.SecurityID;
+		const int32_t instrumentId = allocate.InstrumentId;
+		router->OnOrderSent = [segmentPointer, securityId, instrumentId](uint64_t clientOrderId, int32_t ticks, int32_t quantity, bool isBid)
+		{
+			Mdp3::QueueTracker::Command command{};
+			command.Kind = Mdp3::QueueTracker::CommandKind::PreArm;
+			command.IsBid = isBid ? 1 : 0;
+			command.SecurityID = securityId;
+			command.InstrumentId = instrumentId;
+			command.Ticks = ticks;
+			command.Quantity = quantity;
+			command.ClientOrderId = clientOrderId;
+			PushQueueCommand(*segmentPointer, command);
+		};
+		router->OnOrderLive = [segmentPointer](uint64_t clientOrderId, uint64_t exchangeOrderId)
+		{
+			Mdp3::QueueTracker::Command command{};
+			command.Kind = Mdp3::QueueTracker::CommandKind::Arm;
+			command.ClientOrderId = clientOrderId;
+			command.ExchangeOrderID = exchangeOrderId;
+			PushQueueCommand(*segmentPointer, command);
+		};
+		router->OnOrderQuantity = [segmentPointer](uint64_t clientOrderId, int32_t remainingQuantity)
+		{
+			Mdp3::QueueTracker::Command command{};
+			command.Kind = Mdp3::QueueTracker::CommandKind::OwnQuantity;
+			command.Quantity = remainingQuantity;
+			command.ClientOrderId = clientOrderId;
+			PushQueueCommand(*segmentPointer, command);
+		};
+		router->OnOrderDone = [segmentPointer](uint64_t clientOrderId)
+		{
+			Mdp3::QueueTracker::Command command{};
+			command.Kind = Mdp3::QueueTracker::CommandKind::Disarm;
+			command.ClientOrderId = clientOrderId;
+			PushQueueCommand(*segmentPointer, command);
+		};
+
 		_routers[static_cast<size_t>(allocate.InstrumentId)] = std::move(router);
 
 		// Step 4: Hand the market-data subscription to the segment's market-data thread.
@@ -361,6 +443,11 @@ private:
 					segment.Books.Subscribe(subscription.SecurityID, subscription.InstrumentId,
 						subscription.TickSize, subscription.DisplayFactor);
 					++segment.SubscriptionsRead;
+				}
+				while (segment.QueueRead != segment.QueueWritten.load(std::memory_order_acquire))
+				{
+					segment.Books.Queue.Apply(segment.QueueCommands[segment.QueueRead % Segment::QueueRingLength]);
+					++segment.QueueRead;
 				}
 
 				// Step 2: One receive; a whole datagram goes to the book builder.

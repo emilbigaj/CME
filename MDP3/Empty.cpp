@@ -4,4 +4,5 @@
 #include "BookBuilder.hpp"
 #include "ChannelConfig.hpp"
 #include "PacketWalker.hpp"
+#include "QueueTracker.hpp"
 #include "UdpReceiver.hpp"

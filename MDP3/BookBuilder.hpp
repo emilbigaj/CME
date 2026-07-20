@@ -19,6 +19,7 @@
 // no allocation anywhere past subscription.
 
 #include "PacketWalker.hpp"
+#include "QueueTracker.hpp"
 #include "Mdp3Sbe.hpp"
 #include "Tick.hpp"        // Data::MarketByPrice / Trade / Level / TickHeader
 #include "Timestamp.hpp"
@@ -75,6 +76,10 @@ public:
 	std::function<void(Data::MarketByPrice&, std::span<uint8_t>)> OnMarketByPrice;
 	std::function<void(const Data::Trade&)> OnTrade;
 
+	// The queue positions of our own working orders, fed from the same walk (order events at
+	// their prices) and settled after each book flush, when the level totals are current.
+	QueueTracker Queue;
+
 	// Counters for the recovery layer (read off-line; nothing reacts to them yet).
 	uint64_t RptSeqGaps = 0;        // per-instrument update-sequence gaps seen
 	uint64_t UnhandledActions = 0;  // window-shift deletes and book resets, not yet modelled
@@ -118,10 +123,29 @@ public:
 				case MDIncrementalRefreshBook::TemplateId:
 				{
 					const MDIncrementalRefreshBook& book = *message.As<MDIncrementalRefreshBook>();
-					for (const MDIncrementalRefreshBook_NoMDEntries& entry : MDIncrementalRefreshBookGroups::Of(book).NoMDEntries())
-						GatherLevel(entry, book.TransactTime);
+					MDIncrementalRefreshBookGroups groups = MDIncrementalRefreshBookGroups::Of(book);
+					Sbe::GroupReader<MDIncrementalRefreshBook_NoMDEntries> entries = groups.NoMDEntries();
+					for (uint16_t i = 0; i < entries.Count(); ++i)
+						GatherLevel(entries[i], book.TransactTime);
+					if (Queue.HasOrders())
+						FeedOrderEntries(groups, entries);
 					if (book.MatchEventIndicator.EndOfEvent())
+					{
 						Flush(sendingTimestamp, nicTimestamp);
+						Queue.OnEndOfEvent();
+					}
+					break;
+				}
+				case MDIncrementalRefreshOrderBook::TemplateId:
+				{
+					const MDIncrementalRefreshOrderBook& orderBook = *message.As<MDIncrementalRefreshOrderBook>();
+					if (Queue.HasOrders())
+						FeedStandaloneOrderEntries(orderBook);
+					if (orderBook.MatchEventIndicator.EndOfEvent())
+					{
+						Flush(sendingTimestamp, nicTimestamp);
+						Queue.OnEndOfEvent();
+					}
 					break;
 				}
 				case MDIncrementalRefreshTradeSummary::TemplateId:
@@ -130,7 +154,10 @@ public:
 					for (const MDIncrementalRefreshTradeSummary_NoMDEntries& entry : MDIncrementalRefreshTradeSummaryGroups::Of(summary).NoMDEntries())
 						PublishTrade(entry, summary.TransactTime, sendingTimestamp, nicTimestamp);
 					if (summary.MatchEventIndicator.EndOfEvent())
+					{
 						Flush(sendingTimestamp, nicTimestamp);
+						Queue.OnEndOfEvent();
+					}
 					break;
 				}
 				default:
@@ -245,6 +272,63 @@ private:
 		_dirty.clear();
 	}
 
+	// Feed the order events piggybacked on a book message to the queue tracker; each references
+	// the level entry it belongs to, which names the instrument, side, and price.
+	void FeedOrderEntries(MDIncrementalRefreshBookGroups& groups, Sbe::GroupReader<MDIncrementalRefreshBook_NoMDEntries>& entries)
+	{
+		for (const MDIncrementalRefreshBook_NoOrderIDEntries& orderEntry : groups.NoOrderIDEntries())
+		{
+			// Step 1: Resolve the referenced level entry (one-based; zero means unreferenced).
+			if (orderEntry.ReferenceID == 0 || orderEntry.ReferenceID > entries.Count())
+				continue;
+			const MDIncrementalRefreshBook_NoMDEntries& level = entries[static_cast<uint16_t>(orderEntry.ReferenceID - 1)];
+			const bool isBid = level.MDEntryType == MDEntryTypeBook::Bid;
+			if (!isBid && level.MDEntryType != MDEntryTypeBook::Offer)
+				continue;
+			const int32_t slot = Find(level.SecurityID);
+			if (slot < 0)
+				continue;
+
+			// Step 2: Hand it over in the order path's tick scale.
+			Instrument& instrument = _instruments[static_cast<size_t>(slot)];
+			const int32_t ticks = static_cast<int32_t>(level.MDEntryPx.Mantissa / instrument.GlobexTickMantissa);
+			Queue.OnOrderEvent(level.SecurityID, isBid, ticks, orderEntry.OrderID,
+				orderEntry.MDOrderPriority, orderEntry.MDDisplayQty, orderEntry.OrderUpdateAction);
+		}
+	}
+
+	// Feed the standalone order events (the full-depth stream: changes below the visible window
+	// arrive only here) to the queue tracker.
+	void FeedStandaloneOrderEntries(const MDIncrementalRefreshOrderBook& orderBook)
+	{
+		for (const MDIncrementalRefreshOrderBook_NoMDEntries& entry : MDIncrementalRefreshOrderBookGroups::Of(orderBook).NoMDEntries())
+		{
+			const bool isBid = entry.MDEntryType == MDEntryTypeBook::Bid;
+			if (!isBid && entry.MDEntryType != MDEntryTypeBook::Offer)
+				continue;
+			if (entry.MDEntryPx.Mantissa == INT64_MAX)
+				continue;   // price not present
+			const int32_t slot = Find(entry.SecurityID);
+			if (slot < 0)
+				continue;
+			Instrument& instrument = _instruments[static_cast<size_t>(slot)];
+			const int32_t ticks = static_cast<int32_t>(entry.MDEntryPx.Mantissa / instrument.GlobexTickMantissa);
+
+			// This message speaks in level actions; translate to the order actions (the bulk
+			// window-shift actions carry no order detail and do not occur here).
+			OrderUpdateAction action;
+			switch (entry.MDUpdateAction)
+			{
+				case MDUpdateAction::New:    action = OrderUpdateAction::New; break;
+				case MDUpdateAction::Change: action = OrderUpdateAction::Update; break;
+				case MDUpdateAction::Delete: action = OrderUpdateAction::Delete; break;
+				default: continue;
+			}
+			Queue.OnOrderEvent(entry.SecurityID, isBid, ticks, entry.OrderID,
+				entry.MDOrderPriority, entry.MDDisplayQty, action);
+		}
+	}
+
 	// Publish one trade as the server's trade tick.
 	void PublishTrade(const MDIncrementalRefreshTradeSummary_NoMDEntries& entry, uint64_t transactTime,
 	                  Tools::Timestamp sendingTimestamp, Tools::Timestamp nicTimestamp)
@@ -269,6 +353,12 @@ private:
 		                : entry.AggressorSide == AggressorSide::Sell ? int8_t(-1) : int8_t(0);
 		if (OnTrade)
 			OnTrade(trade);
+
+		// A buy aggressor consumes resting offers; a sell consumes resting bids. Feed the queue
+		// tracker the resting side (no queue movement when the aggressor is unknown).
+		if (Queue.HasOrders() && entry.AggressorSide != AggressorSide::NoAggressor)
+			Queue.OnTradeEntry(entry.SecurityID, entry.AggressorSide == AggressorSide::Sell,
+				trade.Level.Ticks, entry.MDEntrySize);
 	}
 };
 

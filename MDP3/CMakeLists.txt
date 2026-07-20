@@ -7,6 +7,7 @@ add_library(Mdp3Lib STATIC
 	"BookBuilder.hpp"
 	"ChannelConfig.hpp"
 	"PacketWalker.hpp"
+	"QueueTracker.hpp"
 	"UdpReceiver.hpp"
 )
 

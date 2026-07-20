@@ -70,6 +70,13 @@ public:
 	std::function<void(const Execution::OrderRejected&, const std::string&)> OnOrderRejected;
 	std::function<void(const Execution::Fill&)> OnFill;
 
+	// The order-lifecycle moments the queue tracking cares about: an order (or new price) going
+	// to the wire, the exchange naming it, our remaining size changing, and it being done.
+	std::function<void(uint64_t clientOrderId, int32_t ticks, int32_t quantity, bool isBid)> OnOrderSent;
+	std::function<void(uint64_t clientOrderId, uint64_t exchangeOrderId)> OnOrderLive;
+	std::function<void(uint64_t clientOrderId, int32_t remainingQuantity)> OnOrderQuantity;
+	std::function<void(uint64_t clientOrderId)> OnOrderDone;
+
 	InstrumentRouter(int32_t instrumentId, int32_t securityId, MarketSegmentGateway* gateway,
 	                 double tickSize, double displayFactor, const std::string& senderId,
 	                 const std::string& location, int32_t ordersCapacity)
@@ -169,6 +176,8 @@ private:
 			std::string(), _senderId, 0, _nextOrderRequestId++, _location);
 		FormatClientOrderId(clientOrderId, order.ClOrdID);
 		*record = Record{clientOrderId, 0, target.OrderHeader.Seq, target.OrderProfile};
+		if (OnOrderSent)
+			OnOrderSent(clientOrderId, target.OrderProfile.Ticks, static_cast<int32_t>(quantity), side == SideReq::Buy);
 		_gateway->SendNewOrderSingle(order);
 	}
 
@@ -204,6 +213,9 @@ private:
 			quantity, priceMantissa, _senderId, _nextOrderRequestId++, _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, replace.ClOrdID);
 		record->Seq = target.OrderHeader.Seq;   // the replace is this revision
+		if (OnOrderSent)
+			OnOrderSent(target.OrderHeader.ClientOrderId, target.OrderProfile.Ticks,
+				static_cast<int32_t>(quantity), side == SideReq::Buy);
 		_gateway->SendOrderCancelReplace(replace);
 	}
 
@@ -218,6 +230,8 @@ private:
 		Record* record = Find(clientOrderId);
 		if (record != nullptr)
 			record->ExchangeOrderId = report.OrderID;
+		if (OnOrderLive)
+			OnOrderLive(clientOrderId, report.OrderID);
 
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;   // the server fills in client/strategy ids
@@ -248,6 +262,8 @@ private:
 		rejected.OrderProfile = record != nullptr ? record->OrderProfile : ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
 		if (record != nullptr)
 			record->ClientOrderId = 0;   // the order never worked, so free its slot
+		if (OnOrderDone)
+			OnOrderDone(clientOrderId);
 		if (OnOrderRejected)
 			OnOrderRejected(rejected, report.Text.ToString());
 	}
@@ -270,6 +286,8 @@ private:
 		state.QuantityFilled = 0;
 		if (record != nullptr)
 			record->ClientOrderId = 0;   // the order is done, so free its slot
+		if (OnOrderDone)
+			OnOrderDone(clientOrderId);
 		if (OnOrderState)
 			OnOrderState(state);
 	}
@@ -285,6 +303,8 @@ private:
 		const Execution::OrderProfile confirmed = ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
 		if (record != nullptr)
 			record->OrderProfile = confirmed;
+		if (OnOrderLive)
+			OnOrderLive(clientOrderId, report.OrderID);
 
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;
@@ -321,6 +341,13 @@ private:
 
 		// Step 2: The order after the trade.
 		const bool done = report.LeavesQty == 0;
+		if (done)
+		{
+			if (OnOrderDone)
+				OnOrderDone(clientOrderId);
+		}
+		else if (OnOrderQuantity)
+			OnOrderQuantity(clientOrderId, static_cast<int32_t>(report.LeavesQty));
 		Execution::OrderState state{};
 		state.OrderHeader = fill.OrderHeader;
 		state.OrderStateStatus = done ? Execution::OrderStateStatus::Done : Execution::OrderStateStatus::Active;
@@ -349,6 +376,16 @@ private:
 		rejected.OrderTargetAction = action;
 		rejected.OrderRejectedSource = Execution::OrderRejectedSource::Exchange;
 		rejected.OrderProfile = record != nullptr ? record->OrderProfile : Execution::OrderProfile{};
+		if (action == Execution::OrderTargetAction::Amend && record != nullptr && record->ExchangeOrderId != 0)
+		{
+			// The replace was refused: the order still works at its old price. Re-arm the queue
+			// tracking there (an estimate-grade reseed; the pending state at the new price is stale).
+			if (OnOrderSent)
+				OnOrderSent(clientOrderId, record->OrderProfile.Ticks,
+					std::abs(record->OrderProfile.Quantity), record->OrderProfile.Sign() >= 0);
+			if (OnOrderLive)
+				OnOrderLive(clientOrderId, record->ExchangeOrderId);
+		}
 		if (OnOrderRejected)
 			OnOrderRejected(rejected, text.ToString());
 	}
