@@ -64,8 +64,22 @@ int main(int argc, char** argv)
 			ILink3::CmeLoggerManager::LogDirectory("/mnt/S", config.Environment, marketSegmentId), marketSegmentId);
 		loggerManager.Start();
 
-		// Step 3: Build the gateway and print each business reply it hands back. On-demand sends
-		// two messages (party details then order), so CME may reply with two — print them all.
+		// Step 3: Register the parties on the Order Entry Service Gateway if one is configured,
+		// so the order can reference the registered id instead of a paired definition. Any
+		// failure leaves the id at 0 and the order falls back to on-demand.
+		uint64_t partyDetailsListId = 0;
+		if (config.ServiceGatewayMarketSegmentID != 0)
+		{
+			ILink3::CmeLogger& serviceLogger = loggerManager.NewLogger(
+				ILink3::CmeLoggerManager::LogDirectory("/mnt/S", config.Environment, config.ServiceGatewayMarketSegmentID), config.ServiceGatewayMarketSegmentID);
+			ILink3::MarketSegmentGateway serviceGateway(config, config.ServiceGatewayMarketSegmentID, &serviceLogger);
+			serviceGateway.Connect();
+			if (serviceGateway.Logon() && serviceGateway.RegisterPartyDetails())
+				partyDetailsListId = serviceGateway.PartyDetailsListId();
+			serviceGateway.Disconnect();
+		}
+
+		// Step 4: Build the trading gateway and print each business reply it hands back.
 		ILink3::MarketSegmentGateway gateway(config, marketSegmentId, &logger);
 		int replyCount = 0;
 		gateway.OnBusinessMessage = [&](const ILink3::FramedMessage& message)
@@ -75,7 +89,7 @@ int main(int argc, char** argv)
 			++replyCount;
 		};
 
-		// Step 4: Connect and log in.
+		// Step 5: Connect and log in.
 		gateway.Connect();
 		if (!gateway.Logon())
 		{
@@ -83,18 +97,20 @@ int main(int argc, char** argv)
 			loggerManager.Stop();
 			return 1;
 		}
-		std::cout << "Session established. Sending a NewOrderSingle (on-demand parties)...\n";
+		gateway.SetPartyDetailsListId(partyDetailsListId);
+		std::cout << "Session established. Sending a NewOrderSingle ("
+		          << (partyDetailsListId != 0 ? "registered parties" : "on-demand parties") << ")...\n";
 
-		// Step 5: Send one Limit buy of 1 lot at the resting price. The gateway sends the party
-		// details (id 0) immediately before the order and references id 0 on it; the caller
-		// supplies the desk sender id and location from config.
+		// Step 6: Send one Limit buy of 1 lot at the resting price. In registered mode the order
+		// alone goes out referencing the id; on-demand pairs it with a definition (id 0). The
+		// caller supplies the desk sender id and location from config.
 		ILink3::NewOrderSingle order = ILink3::NewLimitOrder(
 			securityId, ILink3::SideReq::Buy, /*quantity*/ 1, priceMantissa,
 			/*clOrdId*/ "CELERITY0001", /*senderId*/ config.Parties.Operator,
 			/*partyDetailsListReqId*/ 0, /*orderRequestId*/ 1, /*location*/ config.Parties.Location);
 		gateway.SendNewOrderSingle(order);
 
-		// Step 6: Poll for a fixed few seconds so both replies (party details + order) arrive.
+		// Step 7: Poll for a fixed few seconds so every reply arrives.
 		const int64_t start = Tools::Timestamp::UtcNow().NanosSinceEpoch;
 		while (gateway.State() == ILink3::SessionState::Established)
 		{
@@ -105,7 +121,7 @@ int main(int argc, char** argv)
 		if (replyCount == 0)
 			std::cout << "No reply within 5s.\n";
 
-		// Step 7: Close cleanly and flush the logger.
+		// Step 8: Close cleanly and flush the logger.
 		gateway.Disconnect();
 		loggerManager.Stop();
 		return replyCount > 0 ? 0 : 1;

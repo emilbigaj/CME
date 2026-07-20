@@ -195,6 +195,12 @@ struct ILink3Config
 	TradingSystemConfig TradingSystem;
 	uint16_t KeepAliveIntervalMs = 30000;   // CME allows 5000..60000
 
+	// The Order Entry Service Gateway's market segment (12 on every CME environment): the
+	// dedicated segment where party details are registered once, for every order to reference.
+	// It must also appear in MarketSegments to be addressable. 0 = do not register; every
+	// order-management message then carries its own on-demand party definition.
+	int32_t ServiceGatewayMarketSegmentID = 0;
+
 	// ---- who is trading (registered once per session, referenced by every order) ----
 	PartyDetailsConfig Parties;
 
@@ -239,6 +245,10 @@ struct ILink3Config
 		// Step 4: The keep-alive interval must be within CME's accepted range.
 		if (KeepAliveIntervalMs < 5000 || KeepAliveIntervalMs > 60000)
 			throw std::invalid_argument("ILink3Config: KeepAliveIntervalMs must be 5000..60000");
+
+		// Step 5: A configured service gateway must be addressable like any other segment.
+		if (ServiceGatewayMarketSegmentID != 0 && TryFindMarketSegment(ServiceGatewayMarketSegmentID) == nullptr)
+			throw std::invalid_argument("ILink3Config: ServiceGatewayMarketSegmentID " + std::to_string(ServiceGatewayMarketSegmentID) + " is not in MarketSegments");
 	}
 
 	// Read a settings file, check it, and return the config; throws on a bad file.
@@ -298,6 +308,7 @@ struct ILink3Config
 			"MarketSegments", &T::MarketSegments,
 			"TradingSystem", &T::TradingSystem,
 			"KeepAliveIntervalMs", &T::KeepAliveIntervalMs,
+			"ServiceGatewayMarketSegmentID", &T::ServiceGatewayMarketSegmentID,
 			"Parties", &T::Parties);
 	};
 };

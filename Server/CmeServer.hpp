@@ -227,7 +227,12 @@ public:
 		// Step 1: Start the message-log drain.
 		_loggerManager.Start();
 
-		// Step 2: Open every segment's venue connections: log on to the order gateway (the
+		// Step 2: Register the trading parties once on the Order Entry Service Gateway, so
+		// every order references the registered id instead of dragging its own definition.
+		// 0 (not configured, or registration failed) means on-demand mode.
+		const uint64_t partyDetailsListId = RegisterParties();
+
+		// Step 3: Open every segment's venue connections: log on to the order gateway (the
 		// serving loop then shortens its receive limit so a quiet connection hands control
 		// straight back), and join the market-data channel's incremental feed.
 		for (std::unique_ptr<Segment>& segment : _segments)
@@ -235,6 +240,7 @@ public:
 			segment->Gateway->Connect();
 			if (!segment->Gateway->Logon())
 				throw std::runtime_error("CmeServer: logon failed on segment " + std::to_string(segment->Config.MarketSegmentID));
+			segment->Gateway->SetPartyDetailsListId(partyDetailsListId);
 			segment->Gateway->SetReceiveTimeout(1);
 
 			const Mdp3::Channel* channel = _channels.FindChannel(segment->Config.Channel);
@@ -254,7 +260,7 @@ public:
 			          << " (" << feed->Ip << ":" << feed->Port << "), core group " << segment->Config.CoreGroupId << "\n";
 		}
 
-		// Step 3: The admin thread services connections and allocations on the background cores.
+		// Step 4: The admin thread services connections and allocations on the background cores.
 		_running = true;
 		_threads.push_back(Tools::LowLatency::StartBackgroundThread("CmeServer.Admin", [this]()
 		{
@@ -265,7 +271,7 @@ public:
 			}
 		}));
 
-		// Step 4: Per segment, the two pinned owners: market data and execution.
+		// Step 5: Per segment, the two pinned owners: market data and execution.
 		for (std::unique_ptr<Segment>& segmentPtr : _segments)
 		{
 			Segment* segment = segmentPtr.get();
@@ -296,6 +302,7 @@ public:
 			if (segment->Gateway->State() == ILink3::SessionState::Established)
 				segment->Gateway->Disconnect();
 			segment->Receiver.Close();
+			segment->SnapshotReceiver.Close();
 		}
 		_server.Stop();
 		_loggerManager.Stop();
@@ -314,6 +321,41 @@ private:
 		for (const MarketSegment& segment : marketSegments.Segments)
 			header.CoreGroupIds.Set(segment.CoreGroupId);
 		return header;
+	}
+
+	// Register the trading parties on the Order Entry Service Gateway — the dedicated CME
+	// segment that stores party lists for the firm — over a short-lived session at start-up.
+	// Returns the registered id for every trading session to reference, or 0 (= on-demand
+	// mode, a definition paired with every order) when no gateway is configured or anything
+	// fails: trading is never blocked on this step.
+	uint64_t RegisterParties()
+	{
+		// Step 1: Not configured means on-demand.
+		const int32_t serviceSegmentId = _ilink3Config.ServiceGatewayMarketSegmentID;
+		if (serviceSegmentId == 0)
+			return 0;
+
+		// Step 2: Open a session to the service gateway, register, and close it again.
+		try
+		{
+			ILink3::CmeLogger& logger = _loggerManager.NewLogger(
+				ILink3::CmeLoggerManager::LogDirectory("/mnt/S", _ilink3Config.Environment, serviceSegmentId), serviceSegmentId);
+			ILink3::MarketSegmentGateway gateway(_ilink3Config, serviceSegmentId, &logger);
+			gateway.Connect();
+			if (!gateway.Logon())
+			{
+				std::cout << "CmeServer: service-gateway logon failed; trading on-demand.\n";
+				return 0;
+			}
+			const bool registered = gateway.RegisterPartyDetails();
+			gateway.Disconnect();
+			return registered ? gateway.PartyDetailsListId() : 0;
+		}
+		catch (const std::exception& error)
+		{
+			std::cout << "CmeServer: party registration failed (" << error.what() << "); trading on-demand.\n";
+			return 0;
+		}
 	}
 
 	// Commit every instrument in the security-definition file — the whole universe, futures and

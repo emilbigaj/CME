@@ -1,7 +1,9 @@
 // Diagnostic: log in once, then send several PartyDetailsDefinitionRequests with different
-// party ids to see which values CME accepts. The key comparison is id 0 (the on-demand value)
-// against non-zero ids (the pre-registration value); every non-zero id has so far been rejected
-// as "out of range", so this tells us which flow the session is provisioned for. No trading.
+// party ids to see which values CME accepts. On a trading gateway only id 0 (on-demand) is
+// accepted — every non-zero id is rejected "out of range" by design, because registration
+// under a non-zero id belongs on the Order Entry Service Gateway (market segment 12), whose
+// stored lists trading sessions then reference. Point this at either kind of segment to
+// confirm that behavior. No trading.
 //
 //   ILink3ProbeParty <settings.json> [marketSegmentId = 99]
 

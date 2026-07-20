@@ -135,17 +135,82 @@ public:
 
 		// Step 4: Session is open. Start the keep-alive clock from this last send.
 		_state = SessionState::Established;
-
-		// Step 5: Try to register the parties once for the whole session, so orders reference
-		// the registered id instead of each dragging its own definition. An environment not
-		// provisioned for pre-registration rejects this and the session stays on-demand — the
-		// logon itself never fails over it.
-		RegisterPartyDetails();
-		return _state == SessionState::Established;
+		return true;
 	}
 
-	// Non-zero once the parties were pre-registered at logon; 0 means on-demand mode.
+	// Non-zero once a registered party id is in effect; 0 means on-demand mode.
 	uint64_t PartyDetailsListId() const { return _partyDetailsListId; }
+
+	// Adopt a party id registered elsewhere (on the Order Entry Service Gateway), so every
+	// order this session sends references it instead of dragging its own definition.
+	void SetPartyDetailsListId(uint64_t partyDetailsListId) { _partyDetailsListId = partyDetailsListId; }
+
+	// Register the trading parties under this session's own id. Meant for a session opened to
+	// the Order Entry Service Gateway (the dedicated CME segment that stores party lists for
+	// the firm) — a trading gateway only accepts id 0, so registration attempted there is
+	// always rejected. The id is the session uuid: unique per run, so a re-registration never
+	// collides with a list CME still holds from earlier in the week. On success trading
+	// sessions adopt the id via SetPartyDetailsListId; any reply other than an accepted
+	// PartyDetailsDefinitionRequestAck (a rejected status, a business reject, or silence)
+	// leaves this session at id 0 and returns false.
+	bool RegisterPartyDetails()
+	{
+		// Step 1: Only meaningful on an open session.
+		if (_state != SessionState::Established)
+			return false;
+
+		// Step 2: Send the definition under the session id, as a sequenced business message.
+		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, _uuid, _outboundSeqNo,
+			static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
+		++_outboundSeqNo;
+
+		// Step 3: Wait for the reply, letting session-layer messages pass: a heartbeat is
+		// skipped, a terminate closes the session and gives up.
+		FramedMessage message{};
+		for (int attempt = 0; attempt < 5; ++attempt)
+		{
+			if (!ReceiveMessage(message))
+			{
+				std::cout << "Party registration: no reply; staying on-demand.\n";
+				return false;
+			}
+			if (message.TemplateId == Sequence::TemplateId)
+				continue;
+			if (message.TemplateId == Terminate::TemplateId)
+			{
+				std::cout << "CME Terminate during party registration: " << message.As<Terminate>()->ToString() << "\n";
+				_state = SessionState::Disconnected;
+				return false;
+			}
+			break;
+		}
+
+		// Step 4: Nothing but heartbeats means no reply; otherwise what came back is a
+		// sequenced business message — count it.
+		if (message.TemplateId == Sequence::TemplateId)
+		{
+			std::cout << "Party registration: no reply; staying on-demand.\n";
+			return false;
+		}
+		++_inboundSeqNo;
+
+		// Step 5: Accepted means our id echoed back with status 0; adopt the id.
+		if (message.TemplateId == PartyDetailsDefinitionRequestAck::TemplateId)
+		{
+			const PartyDetailsDefinitionRequestAck* ack = message.As<PartyDetailsDefinitionRequestAck>();
+			if (ack->PartyDetailRequestStatus == 0 && ack->PartyDetailsListReqID == _uuid)
+			{
+				_partyDetailsListId = _uuid;
+				std::cout << "Party details registered (id " << _partyDetailsListId << ").\n";
+				return true;
+			}
+		}
+
+		// Step 6: Rejected — print the decoded reply (the memo carries CME's reason).
+		std::cout << "Party registration rejected: "
+		          << ToObjectType(message.TemplateId) << ": " << ToJsonLine(message.TemplateId, message.Body) << "\n";
+		return false;
+	}
 
 	// Diagnostic: send one PartyDetailsDefinitionRequest with an explicit party id (0 allowed)
 	// and print CME's reply, to probe which id values the session accepts. Returns the reply's
@@ -353,68 +418,6 @@ private:
 	void SendKeepAlive()
 	{
 		SendFramed(EncodeSequence(_uuid, _outboundSeqNo, _sendBuffer));
-	}
-
-	// Register the trading parties under this session's own id, right after logon. On success
-	// every order-management message references the id and no per-message definition is needed.
-	// The id is the session uuid: unique per session, so a re-login never collides with a list
-	// CME still holds from an earlier run of the week. Any reply other than an accepted
-	// PartyDetailsDefinitionRequestAck (a rejected status, a business reject, or silence) leaves
-	// _partyDetailsListId at 0 — the on-demand mode that pairs every message with a definition.
-	bool RegisterPartyDetails()
-	{
-		// Step 1: Send the definition under the session id, as a sequenced business message.
-		SendFramed(EncodePartyDetailsDefinitionRequest(_config.Parties, _uuid, _outboundSeqNo,
-			static_cast<uint64_t>(Tools::Timestamp::UtcNow().NanosSinceEpoch), _sendBuffer));
-		++_outboundSeqNo;
-
-		// Step 2: Wait for the reply, letting session-layer messages pass: a heartbeat is
-		// skipped, a terminate closes the session and gives up.
-		FramedMessage message{};
-		for (int attempt = 0; attempt < 5; ++attempt)
-		{
-			if (!ReceiveMessage(message))
-			{
-				std::cout << "Party pre-registration: no reply; staying on-demand.\n";
-				return false;
-			}
-			if (message.TemplateId == Sequence::TemplateId)
-				continue;
-			if (message.TemplateId == Terminate::TemplateId)
-			{
-				std::cout << "CME Terminate during party pre-registration: " << message.As<Terminate>()->ToString() << "\n";
-				_state = SessionState::Disconnected;
-				return false;
-			}
-			break;
-		}
-
-		// Step 3: Nothing but heartbeats means no reply; otherwise what came back is a
-		// sequenced business message — count it.
-		if (message.TemplateId == Sequence::TemplateId)
-		{
-			std::cout << "Party pre-registration: no reply; staying on-demand.\n";
-			return false;
-		}
-		++_inboundSeqNo;
-
-		// Step 4: Accepted means our id echoed back with status 0; adopt the id.
-		if (message.TemplateId == PartyDetailsDefinitionRequestAck::TemplateId)
-		{
-			const PartyDetailsDefinitionRequestAck* ack = message.As<PartyDetailsDefinitionRequestAck>();
-			if (ack->PartyDetailRequestStatus == 0 && ack->PartyDetailsListReqID == _uuid)
-			{
-				_partyDetailsListId = _uuid;
-				std::cout << "Party details pre-registered (id " << _partyDetailsListId << ").\n";
-				return true;
-			}
-		}
-
-		// Step 5: Rejected — print the decoded reply (the memo carries CME's reason) and stay
-		// on-demand.
-		std::cout << "Party pre-registration rejected; staying on-demand: "
-		          << ToObjectType(message.TemplateId) << ": " << ToJsonLine(message.TemplateId, message.Body) << "\n";
-		return false;
 	}
 
 	// Handle one received message by its kind: session-layer messages are dealt with here;
