@@ -59,6 +59,7 @@ class CmeServer
 		MarketSegment Config;
 		std::unique_ptr<ILink3::MarketSegmentGateway> Gateway;
 		Mdp3::UdpReceiver Receiver;
+		Mdp3::UdpReceiver SnapshotReceiver;   // read only while any instrument awaits a snapshot
 		Mdp3::BookBuilder Books;
 
 		struct Subscription
@@ -165,6 +166,16 @@ public:
 
 			// The queue tracker reads the authoritative book (this market-data thread writes it,
 			// so the read is consistent) and publishes into the server-owned order state.
+			segment->Books.ReadSide = [this](int32_t instrumentId, bool isBid, Data::Level* levels, int32_t capacity)
+			{
+				const Data::MarketByPrice64& book = _server.Context().GetMarketByPrice64(instrumentId).GetReadonlyRef();
+				const Data::SideByPrice64& side = isBid ? book.Bids : book.Asks;
+				int32_t count = 0;
+				Data::SideByPrice64::Enumerator enumerator = side.GetEnumerator();
+				while (count < capacity && enumerator.MoveNext())
+					levels[count++] = enumerator.Current();
+				return count;
+			};
 			segment->Books.Queue.ReadLevelQuantity = [this](int32_t instrumentId, bool isBid, int32_t ticks)
 			{
 				const Data::MarketByPrice64& book = _server.Context().GetMarketByPrice64(instrumentId).GetReadonlyRef();
@@ -233,6 +244,10 @@ public:
 			if (feed == nullptr)
 				throw std::runtime_error("CmeServer: channel " + std::to_string(segment->Config.Channel) + " has no incremental feed");
 			segment->Receiver.Join(feed->Ip, feed->Port, _config.MarketDataInterfaceIp);
+			const Mdp3::Connection* snapshotFeed = channel->Find("S", 'A');
+			if (snapshotFeed == nullptr)
+				throw std::runtime_error("CmeServer: channel " + std::to_string(segment->Config.Channel) + " has no snapshot feed");
+			segment->SnapshotReceiver.Join(snapshotFeed->Ip, snapshotFeed->Port, _config.MarketDataInterfaceIp, /*recvTimeoutMilliseconds*/ 1);
 
 			std::cout << "CmeServer: " << segment->Config.Name << " (segment " << segment->Config.MarketSegmentID
 			          << ") up — gateway session open, market data " << feed->Id
@@ -454,6 +469,16 @@ private:
 				const ssize_t n = segment.Receiver.Recv(buffer);
 				if (n > 0)
 					segment.Books.OnPacket(std::span<const uint8_t>(buffer.data(), static_cast<size_t>(n)), Tools::Timestamp::UtcNow());
+
+				// Step 3: While any instrument awaits its snapshot, drain the snapshot feed too
+				// (otherwise it is left unread; the cyclic data ages out in the kernel harmlessly).
+				while (segment.Books.StaleCount() > 0)
+				{
+					const ssize_t snapshotBytes = segment.SnapshotReceiver.Recv(buffer);
+					if (snapshotBytes <= 0)
+						break;
+					segment.Books.OnSnapshotPacket(std::span<const uint8_t>(buffer.data(), static_cast<size_t>(snapshotBytes)), Tools::Timestamp::UtcNow());
+				}
 			});
 		}
 	}

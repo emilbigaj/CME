@@ -54,7 +54,10 @@ int main(int argc, char** argv)
 		const Mdp3::Connection* feed = channel->Find("I", 'A');
 		Mdp3::UdpReceiver receiver;
 		receiver.Join(feed->Ip, feed->Port, interfaceIp);
-		std::cout << "Joined " << feed->Id << " (" << feed->Ip << ":" << feed->Port << ") on "
+		const Mdp3::Connection* snapshotFeed = channel->Find("S", 'A');
+		Mdp3::UdpReceiver snapshotReceiver;
+		snapshotReceiver.Join(snapshotFeed->Ip, snapshotFeed->Port, interfaceIp, /*recvTimeoutMilliseconds*/ 1);
+		std::cout << "Joined " << feed->Id << " and " << snapshotFeed->Id << " on "
 		          << interfaceIp << "; listening " << seconds << "s...\n\n";
 
 		// Step 3: The builder feeds a real server-side book; print the top when it moves.
@@ -62,6 +65,15 @@ int main(int argc, char** argv)
 		Data::Level lastBid{}, lastAsk{};
 		uint64_t updates = 0, trades = 0;
 		Mdp3::BookBuilder builder;
+		builder.ReadSide = [&book](int32_t, bool isBid, Data::Level* levels, int32_t capacity)
+		{
+			const Data::SideByPrice64& side = isBid ? book.Bids : book.Asks;
+			int32_t count = 0;
+			Data::SideByPrice64::Enumerator enumerator = side.GetEnumerator();
+			while (count < capacity && enumerator.MoveNext())
+				levels[count++] = enumerator.Current();
+			return count;
+		};
 		builder.Subscribe(securityId, /*instrumentId*/ 0, tickSize, instrument->DisplayFactor);
 		builder.OnMarketByPrice = [&](Data::MarketByPrice&, std::span<uint8_t> span)
 		{
@@ -91,15 +103,21 @@ int main(int argc, char** argv)
 		while (Tools::Timestamp::UtcNow().NanosSinceEpoch < deadline)
 		{
 			const ssize_t n = receiver.Recv(buffer);
-			if (n <= 0)
-				continue;
-			builder.OnPacket(std::span<const uint8_t>(buffer.data(), static_cast<size_t>(n)), Tools::Timestamp::UtcNow());
+			if (n > 0)
+				builder.OnPacket(std::span<const uint8_t>(buffer.data(), static_cast<size_t>(n)), Tools::Timestamp::UtcNow());
+			while (builder.StaleCount() > 0)
+			{
+				const ssize_t s = snapshotReceiver.Recv(buffer);
+				if (s <= 0)
+					break;
+				builder.OnSnapshotPacket(std::span<const uint8_t>(buffer.data(), static_cast<size_t>(s)), Tools::Timestamp::UtcNow());
+			}
 		}
 
 		// Step 5: The tallies the recovery layer will care about.
 		std::cout << "\n---- " << updates << " book updates, " << trades << " trades, "
-		          << builder.RptSeqGaps << " update-sequence gaps, "
-		          << builder.UnhandledActions << " unhandled actions ----\n";
+		          << builder.SnapshotResyncs << " snapshot resyncs, " << builder.PacketGaps << " packet gaps, "
+		          << builder.StaleDrops << " stale drops, " << builder.BulkDeletes << " bulk deletes ----\n";
 		return updates > 0 ? 0 : 1;
 	}
 	catch (const std::exception& error)
