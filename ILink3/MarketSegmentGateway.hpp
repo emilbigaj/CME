@@ -70,6 +70,9 @@ class BasicMarketSegmentGateway
 	// CME serves at most this many messages per retransmit request, one request in flight at
 	// a time — a bigger gap recovers as consecutive batches.
 	static constexpr uint32_t RetransmitBatchLimit = 2500;
+
+	// The most held-back bytes a recovery may accumulate before it is abandoned for liveness.
+	static constexpr size_t HoldbackLimitBytes = 1 << 20;
 	uint32_t _establishRejects = 0;     // consecutive Establish rejections of the resumed session
 
 	// A resumed session is discarded only after this many consecutive Establish rejections:
@@ -84,6 +87,11 @@ class BasicMarketSegmentGateway
 	std::vector<uint8_t> _recvBuffer;
 	size_t _consumed = 0;               // how far into _recvBuffer we have already framed
 	std::array<uint8_t, 8192> _chunk{};
+
+	// New messages that arrived while a recovery replay was still running, kept whole and in
+	// arrival order so the owner sees everything in sequence order: replays first, then
+	// these. Only ever touched during a recovery — empty otherwise.
+	std::vector<uint8_t> _holdback;
 
 public:
 	// Called for each received business message (execution reports and the like). Session-layer
@@ -164,6 +172,7 @@ public:
 		_recoverNextFrom = 0;
 		_recoverEnd = 0;
 		_batchEnd = 0;
+		_holdback.clear();
 
 		// Step 2: Negotiate — but only once per session id: a resumed id that CME already
 		// confirmed skips straight to Establish. If our record says unconfirmed yet CME
@@ -632,12 +641,30 @@ private:
 		{
 			_batchEnd = 0;
 			std::cout << "Recovery complete.\n";
+			FlushHoldback();
 			return;
 		}
 		const uint32_t count = std::min(_recoverEnd - _recoverNextFrom, RetransmitBatchLimit);
 		SendFramed(EncodeRetransmitRequest(_uuid, _recoverNextFrom, static_cast<uint16_t>(count), _sendBuffer));
 		_batchEnd = _recoverNextFrom + count;
 		_recoverNextFrom = _batchEnd;
+	}
+
+	// Deliver the new messages that waited behind the recovery — oldest first, counted and
+	// persisted one by one, exactly as if they had just arrived.
+	void FlushHoldback()
+	{
+		size_t consumed = 0;
+		FramedMessage message{};
+		while (TryFrame(std::span<const uint8_t>(_holdback).subspan(consumed), message))
+		{
+			if (OnBusinessMessage)
+				OnBusinessMessage(message);
+			++_inboundSeqNo;
+			PersistSequences();
+			consumed += message.TotalLength;
+		}
+		_holdback.clear();
 	}
 
 	// Mirror the sequence counters into the persistent store. Callers advance a counter and
@@ -699,6 +726,7 @@ private:
 					{
 						_recoverNextFrom = _recoverEnd;
 						_batchEnd = 0;
+						FlushHoldback();
 					}
 					else
 						_batchEnd = grantEnd;
@@ -712,27 +740,47 @@ private:
 				          << message.As<RetransmitReject>()->ToString() << "\n";
 				_recoverNextFrom = _recoverEnd;
 				_batchEnd = 0;
+				FlushHoldback();
 				break;
 			}
 			default:
 			{
-				// A business message (execution report and the like): forward it, then count
-				// it — in that order, so a crash mid-handling re-recovers the message rather
-				// than losing it. Every business message begins with its own number, so a
-				// recovery replay (below the resume point) is told apart from live flow
-				// exactly: replays are not counted — the live counter jumped past them at
-				// logon — and the one finishing a batch asks for the next.
-				if (OnBusinessMessage)
-					OnBusinessMessage(message);
+				// A business message (execution report and the like). Every one begins with
+				// its own number, so a recovery replay (below the resume point) is told apart
+				// from new flow exactly. The owner sees everything in sequence order: replays
+				// deliver at once (they are the oldest, and are never counted — the live
+				// counter jumped past them at logon; the one finishing a batch asks for the
+				// next); new messages landing mid-recovery wait their turn in the holdback,
+				// uncounted until delivered, so a crash re-recovers rather than loses them.
 				uint32_t sequenceNumber = 0;
 				std::memcpy(&sequenceNumber, message.Body, sizeof(sequenceNumber));
 				if (_replayBelowSeq != 0 && sequenceNumber < _replayBelowSeq)
 				{
+					if (OnBusinessMessage)
+						OnBusinessMessage(message);
 					if (_batchEnd != 0 && sequenceNumber + 1 >= _batchEnd)
 						RequestNextRetransmitBatch();
 				}
+				else if (RecoveryOutstanding())
+				{
+					const uint8_t* frame = message.Body - MessagePrefixLength;
+					_holdback.insert(_holdback.end(), frame, frame + message.TotalLength);
+
+					// Liveness valve: a recovery CME never finishes must not dam the flow
+					// forever. Give up on ordering, loudly, rather than starve the owner.
+					if (_holdback.size() > HoldbackLimitBytes)
+					{
+						std::cout << "Recovery stalled with " << _holdback.size()
+						          << " bytes held back; abandoning the replay to keep the flow alive.\n";
+						_recoverNextFrom = _recoverEnd;
+						_batchEnd = 0;
+						FlushHoldback();
+					}
+				}
 				else
 				{
+					if (OnBusinessMessage)
+						OnBusinessMessage(message);
 					++_inboundSeqNo;
 					PersistSequences();
 				}
