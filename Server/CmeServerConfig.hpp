@@ -25,6 +25,10 @@ struct CmeServerConfig
 	std::string ChannelConfigPath;        // the market-data channel configuration file
 	std::string MarketSegmentsPath;       // the machine's market-segment layout (shared by environments)
 	std::string MarketDataInterfaceIp;    // the interface the multicast feeds are joined on
+	// Which order-entry transport to stamp the server out on: "Kernel" (ordinary sockets;
+	// bring-up, certification) or "TcpDirect" (kernel bypass on a Solarflare port, named by
+	// the ZF_ATTR environment variable; production).
+	std::string Transport = "Kernel";
 	bool StubLoggingServer = false;       // testing only: accept our own logging connections
 
 	// Check every required field is present; throws with the exact reason if not.
@@ -32,6 +36,8 @@ struct CmeServerConfig
 	{
 		if (ServerName.empty())
 			throw std::invalid_argument("CmeServerConfig: ServerName is required");
+		if (Transport != "Kernel" && Transport != "TcpDirect")
+			throw std::invalid_argument("CmeServerConfig: Transport must be Kernel or TcpDirect");
 		if (ILink3ConfigPath.empty() || SecDefPath.empty() || ChannelConfigPath.empty() || MarketSegmentsPath.empty())
 			throw std::invalid_argument("CmeServerConfig: ILink3ConfigPath, SecDefPath, ChannelConfigPath, and MarketSegmentsPath are required");
 		if (MarketDataInterfaceIp.empty())
@@ -69,6 +75,7 @@ struct CmeServerConfig
 			"ChannelConfigPath", &T::ChannelConfigPath,
 			"MarketSegmentsPath", &T::MarketSegmentsPath,
 			"MarketDataInterfaceIp", &T::MarketDataInterfaceIp,
+			"Transport", &T::Transport,
 			"StubLoggingServer", &T::StubLoggingServer);
 	};
 };

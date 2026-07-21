@@ -39,12 +39,13 @@
 namespace ILink3
 {
 
-class InstrumentRouter
+template <typename Gateway>
+class BasicInstrumentRouter
 {
 	// ---- fixed identity + routing (set once) ----
 	int32_t _instrumentId;                 // the server's compact id for this instrument
 	int32_t _securityId;                   // CME's id, named on the wire
-	MarketSegmentGateway* _gateway;        // the session this instrument's orders go out on
+	Gateway* _gateway;                     // the session this instrument's orders go out on
 	int64_t _globexTickMantissa;           // wire price step (PRICE9 mantissa) per one server tick
 	std::string _senderId;                 // operator id stamped on each order (built once)
 	std::string _location;                 // desk location stamped on each order (built once)
@@ -77,7 +78,7 @@ public:
 	std::function<void(uint64_t clientOrderId, int32_t remainingQuantity)> OnOrderQuantity;
 	std::function<void(uint64_t clientOrderId)> OnOrderDone;
 
-	InstrumentRouter(int32_t instrumentId, int32_t securityId, MarketSegmentGateway* gateway,
+	BasicInstrumentRouter(int32_t instrumentId, int32_t securityId, Gateway* gateway,
 	                 double tickSize, double displayFactor, const std::string& senderId,
 	                 const std::string& location, int32_t ordersCapacity)
 		: _instrumentId(instrumentId),
@@ -94,7 +95,7 @@ public:
 
 	int32_t InstrumentId() const { return _instrumentId; }
 	int32_t SecurityID() const { return _securityId; }
-	const MarketSegmentGateway* Gateway() const { return _gateway; }
+	const Gateway* GatewayUsed() const { return _gateway; }
 
 	// After a reconnect has recovered everything the exchange published, any slot still
 	// waiting for its exchange id belongs to an order whose send died with the old connection
@@ -472,5 +473,8 @@ private:
 		return length > 0 && std::from_chars(begin, begin + length, value).ec == std::errc{};
 	}
 };
+
+// The kernel-socket form, matching the plain MarketSegmentGateway.
+using InstrumentRouter = BasicInstrumentRouter<MarketSegmentGateway>;
 
 } // namespace ILink3

@@ -50,15 +50,20 @@
 namespace Server
 {
 
-class CmeServer
+template <typename Connection>
+class BasicCmeServer
 {
+	// The gateway and router stamped for this server's transport.
+	using GatewayType = ILink3::BasicMarketSegmentGateway<Connection>;
+	using RouterType = ILink3::BasicInstrumentRouter<GatewayType>;
+
 	// One running market segment: its settings, its venue connections, and the handoff of
 	// fresh subscriptions from the admin thread to the market-data thread (a tiny single
 	// producer, single consumer ring — the admin thread writes, the market-data thread reads).
 	struct Segment
 	{
 		MarketSegment Config;
-		std::unique_ptr<ILink3::MarketSegmentGateway> Gateway;
+		std::unique_ptr<GatewayType> Gateway;
 		Mdp3::UdpReceiver Receiver;
 		Mdp3::UdpReceiver SnapshotReceiver;   // read only while any instrument awaits a snapshot
 		Mdp3::BookBuilder Books;
@@ -104,7 +109,7 @@ class CmeServer
 	ILink3::CmeLoggerManager _loggerManager;
 	std::vector<std::unique_ptr<Segment>> _segments;
 	std::vector<const SecDef::Loaded*> _loadedByHeaderId;   // catalog order == header id
-	std::array<std::unique_ptr<ILink3::InstrumentRouter>, 64> _routers;   // by instrument id
+	std::array<std::unique_ptr<RouterType>, 64> _routers;   // by instrument id
 
 	// ---- service threads ----
 	std::vector<std::thread> _threads;
@@ -115,7 +120,7 @@ public:
 	// Raised with any exception a service thread catches; the owner wires it to the alerts.
 	std::function<void(const std::exception&)> Exception;
 
-	CmeServer(const CmeServerConfig& config, const MarketSegments& marketSegments,
+	BasicCmeServer(const CmeServerConfig& config, const MarketSegments& marketSegments,
 	          const ILink3::ILink3Config& ilink3Config, const SecDef::SecDefFile& secdef,
 	          const Mdp3::ChannelConfig& channels)
 		: _config(config), _marketSegments(marketSegments), _ilink3Config(ilink3Config),
@@ -136,7 +141,7 @@ public:
 		// route it to the instrument's router.
 		_server.OrderTarget = [this](const Execution::OrderTarget& target)
 		{
-			ILink3::InstrumentRouter* router = _routers[static_cast<size_t>(target.OrderHeader.InstrumentId)].get();
+			RouterType* router = _routers[static_cast<size_t>(target.OrderHeader.InstrumentId)].get();
 			if (router != nullptr)
 				router->OnOrderTarget(target);
 			else
@@ -153,7 +158,7 @@ public:
 
 			ILink3::CmeLogger& logger = _loggerManager.NewLogger(
 				ILink3::CmeLoggerManager::LogDirectory("/mnt/S", _ilink3Config.Environment, segmentConfig.MarketSegmentID), segmentConfig.MarketSegmentID);
-			segment->Gateway = std::make_unique<ILink3::MarketSegmentGateway>(_ilink3Config, segmentConfig.MarketSegmentID, &logger,
+			segment->Gateway = std::make_unique<GatewayType>(_ilink3Config, segmentConfig.MarketSegmentID, &logger,
 				/*useSecondary*/ false, ILink3::SessionStore::Directory("/mnt/S", _ilink3Config.Environment));
 			segment->Gateway->OnBusinessMessage = [this](const ILink3::FramedMessage& message)
 			{
@@ -210,7 +215,7 @@ public:
 	}
 
 	// Stopping on destruction keeps a thrown exception from unwinding into live service threads.
-	~CmeServer()
+	~BasicCmeServer()
 	{
 		Stop();
 	}
@@ -427,7 +432,7 @@ private:
 		// Step 3: The order router, its events flowing back into the server.
 		const double tickSize = loaded.Header.AsInstrumentHeader().TickSize;
 		const int32_t ordersCapacity = _server.Context().ServerHeader().GetReadonlyRef().OrdersCapacity();
-		auto router = std::make_unique<ILink3::InstrumentRouter>(allocate.InstrumentId, loaded.SecurityID,
+		auto router = std::make_unique<RouterType>(allocate.InstrumentId, loaded.SecurityID,
 			segment->Gateway.get(), tickSize, loaded.DisplayFactor,
 			_ilink3Config.Parties.Operator, _ilink3Config.Parties.Location, ordersCapacity);
 		router->OnOrderState = [this](const Execution::OrderState& state)
@@ -492,7 +497,7 @@ private:
 		// Step 4: Hand the market-data subscription to the segment's market-data thread.
 		const uint32_t written = segment->SubscriptionsWritten.load(std::memory_order_relaxed);
 		segment->Subscriptions[written % Segment::SubscriptionRingLength] =
-			Segment::Subscription{loaded.SecurityID, allocate.InstrumentId, tickSize, loaded.DisplayFactor};
+			typename Segment::Subscription{loaded.SecurityID, allocate.InstrumentId, tickSize, loaded.DisplayFactor};
 		segment->SubscriptionsWritten.store(written + 1, std::memory_order_release);
 
 		std::cout << "CmeServer: instrument " << allocate.InstrumentId << " -> SecurityID "
@@ -510,7 +515,7 @@ private:
 				// Step 1: Adopt any subscriptions the admin thread handed over.
 				while (segment.SubscriptionsRead != segment.SubscriptionsWritten.load(std::memory_order_acquire))
 				{
-					const Segment::Subscription& subscription =
+					const typename Segment::Subscription& subscription =
 						segment.Subscriptions[segment.SubscriptionsRead % Segment::SubscriptionRingLength];
 					segment.Books.Subscribe(subscription.SecurityID, subscription.InstrumentId,
 						subscription.TickSize, subscription.DisplayFactor);
@@ -583,8 +588,8 @@ private:
 			segment.Gateway->Poll();
 
 		// Step 3: Whatever is still unacknowledged was lost with the old connection.
-		for (const std::unique_ptr<ILink3::InstrumentRouter>& router : _routers)
-			if (router != nullptr && router->Gateway() == segment.Gateway.get())
+		for (const std::unique_ptr<RouterType>& router : _routers)
+			if (router != nullptr && router->GatewayUsed() == segment.Gateway.get())
 			{
 				const int32_t swept = router->SweepUnacknowledged();
 				if (swept > 0)
@@ -629,10 +634,10 @@ private:
 	void DispatchExecutionReport(const ILink3::FramedMessage& message)
 	{
 		uint64_t clientOrderId = 0;
-		if (ILink3::InstrumentRouter::TryGetClientOrderId(message, clientOrderId))
+		if (RouterType::TryGetClientOrderId(message, clientOrderId))
 		{
 			const int32_t instrumentId = Execution::OrderIdAllocator::GetInstrumentId(clientOrderId);
-			ILink3::InstrumentRouter* router = static_cast<size_t>(instrumentId) < _routers.size()
+			RouterType* router = static_cast<size_t>(instrumentId) < _routers.size()
 				? _routers[static_cast<size_t>(instrumentId)].get() : nullptr;
 			if (router != nullptr)
 			{
@@ -644,5 +649,9 @@ private:
 		          << ILink3::ToJsonLine(message.TemplateId, message.Body) << "\n";
 	}
 };
+
+// The kernel-socket form: bring-up, certification, and ordinary network paths. Production
+// instantiates BasicCmeServer<ILink3::ZfConnection> for the kernel-bypass transport.
+using CmeServer = BasicCmeServer<ILink3::TcpConnection>;
 
 } // namespace Server

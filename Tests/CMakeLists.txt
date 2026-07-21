@@ -54,3 +54,7 @@ target_link_libraries(Mdp3Book PRIVATE Mdp3Lib SecDefLib)
 # Solarflare interface (exercises the driver and license; no traffic).
 add_executable(ZfProbe "ZfProbeTests.cpp")
 target_link_libraries(ZfProbe PRIVATE onload_zf)
+
+# Live: kernel-bypass TCP connect to a real address — reports established / refused / timeout.
+add_executable(ZfTcp "ZfConnectionTests.cpp")
+target_link_libraries(ZfTcp PRIVATE ILink3Lib onload_zf)

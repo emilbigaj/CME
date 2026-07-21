@@ -17,7 +17,9 @@ target_link_libraries(ServerLib PUBLIC ILink3Lib SecDefLib Mdp3Lib)
 target_include_directories(ServerLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # --- B. The server process ---
+# Links the kernel-bypass library because the process compiles both transport flavors and
+# picks one from the settings at start-up.
 add_executable(CmeServer "Main.cpp")
-target_link_libraries(CmeServer PRIVATE ServerLib)
+target_link_libraries(CmeServer PRIVATE ServerLib onload_zf)
 
 # Test executables live in the top-level Tests/ folder, not here.

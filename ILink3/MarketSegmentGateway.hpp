@@ -4,8 +4,10 @@
 // the three things a live session needs: the network connection, the logger that records
 // every message, and the session state (the session id, the sequence numbers, and the
 // keep-alive clock). One thread owns a gateway and drives it: it connects, logs in, then
-// calls Poll() in a loop. Everything above the connection is transport-agnostic, so swapping
-// the kernel-socket connection for the kernel-bypass one in production changes nothing here.
+// calls Poll() in a loop. The class is a template on its connection type — the kernel-socket
+// TcpConnection for bring-up and certification, the kernel-bypass ZfConnection in production
+// — with identical behavior above the transport and no indirection between them; the plain
+// MarketSegmentGateway name is the kernel-socket form.
 //
 // The session state is kept directly in this class rather than a separate object, because it
 // is meaningless without the connection it rides on. Given a session directory the state is
@@ -43,7 +45,8 @@ enum class SessionState : uint8_t
 	Established = 2,     // logged in; the sequenced session is open
 };
 
-class MarketSegmentGateway
+template <typename Connection>
+class BasicMarketSegmentGateway
 {
 	// ---- fixed configuration (set once at construction) ----
 	ILink3Config _config;
@@ -52,7 +55,7 @@ class MarketSegmentGateway
 	CmeLogger* _logger;
 
 	// ---- connection + session state (owned by the single driving thread) ----
-	TcpConnection _connection;
+	Connection _connection;
 	SessionState _state = SessionState::Disconnected;
 	uint64_t _uuid = 0;                 // this session's id; the same value signs both logon messages
 	uint64_t _partyDetailsListId = 0;   // non-zero once the parties are pre-registered; 0 = on-demand
@@ -84,8 +87,8 @@ public:
 	// A session directory makes the session persistent: the week's id and sequence counters
 	// live in a file there, so a restart resumes the same session and recovers what it missed.
 	// Without one (the default) every logon starts a fresh session.
-	MarketSegmentGateway(const ILink3Config& config, int32_t marketSegmentId, CmeLogger* logger,
-	                     bool useSecondary = false, const std::filesystem::path& sessionDirectory = {})
+	BasicMarketSegmentGateway(const ILink3Config& config, int32_t marketSegmentId, CmeLogger* logger,
+	                          bool useSecondary = false, const std::filesystem::path& sessionDirectory = {})
 		: _config(config), _useSecondary(useSecondary), _logger(logger)
 	{
 		// Step 1: Resolve the market segment; without it there is nothing to connect to.
@@ -737,5 +740,9 @@ private:
 		std::cout << stage << " got unexpected reply " << ToObjectType(message.TemplateId) << "\n";
 	}
 };
+
+// The kernel-socket form: bring-up, certification, and every environment reached over an
+// ordinary network path.
+using MarketSegmentGateway = BasicMarketSegmentGateway<TcpConnection>;
 
 } // namespace ILink3
