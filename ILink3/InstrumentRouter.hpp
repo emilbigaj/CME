@@ -60,42 +60,41 @@ class BasicInstrumentRouter
 		uint64_t ExchangeOrderId = 0;          // CME's order id, known once the order is accepted
 		// The last revision the exchange CONFIRMED (the create's until its acknowledgment).
 		// Never stamped at send time: each request goes out under a session-unique id the
-		// response echoes, and the in-flight ring below maps that echo back to the revision
+		// response echoes, and the request table below maps that echo back to the revision
 		// it answers — so a report is always attributed correctly, however many revisions
 		// are in flight.
 		int32_t Seq = 0;
 		Execution::OrderProfile OrderProfile;  // the price/size the exchange last confirmed
-
-		// The revisions in flight: newest overwrites oldest, far deeper than any sane
-		// modify pipeline. A missed lookup falls back to the confirmed revision.
-		static constexpr uint32_t InFlightDepth = 4;
-		struct Request
-		{
-			uint64_t RequestId = 0;
-			int32_t Seq = 0;
-		};
-		Request InFlight[InFlightDepth];
-		uint32_t InFlightNext = 0;
-
-		// Remember that revision `seq` went out under `requestId`.
-		void PushRequest(uint64_t requestId, int32_t seq)
-		{
-			InFlight[InFlightNext % InFlightDepth] = Request{requestId, seq};
-			++InFlightNext;
-		}
 	};
 
-	// The revision a response answers: the echoed request id looked up in the record's
-	// in-flight ring; unknown echoes (an overwritten entry, an unsolicited event, no record)
-	// fall back to the last confirmed revision.
-	static int32_t SeqOfRequest(const Record* record, uint64_t requestId)
+	// The in-flight request table: request ids are monotonic, so a direct-mapped entry per id
+	// gives one predictable slot to write at send and read at response — no scan, no per-order
+	// growth. It holds the last table-length requests of THIS router; a strategy would need
+	// that many unacknowledged messages on one instrument before an entry could be overwritten
+	// early, and even then a lookup miss only falls back to the confirmed revision.
+	struct RequestTag
 	{
-		if (record == nullptr)
-			return 0;
-		for (const typename Record::Request& request : record->InFlight)
-			if (request.RequestId == requestId && requestId != 0)
-				return request.Seq;
-		return record->Seq;
+		uint64_t RequestId = 0;
+		int32_t Seq = 0;
+	};
+	static constexpr uint32_t RequestTableLength = 1024;
+	std::vector<RequestTag> _requestTable = std::vector<RequestTag>(RequestTableLength);
+
+	// Remember that revision `seq` went out under `requestId`.
+	void PushRequest(uint64_t requestId, int32_t seq)
+	{
+		_requestTable[requestId & (RequestTableLength - 1)] = RequestTag{requestId, seq};
+	}
+
+	// The revision a response answers: the echoed request id's table entry when it still
+	// holds that exact id; unknown echoes (overwritten, unsolicited, or zero) fall back to
+	// the record's last confirmed revision.
+	int32_t SeqOfRequest(const Record* record, uint64_t requestId) const
+	{
+		const RequestTag& tag = _requestTable[requestId & (RequestTableLength - 1)];
+		if (requestId != 0 && tag.RequestId == requestId)
+			return tag.Seq;
+		return record != nullptr ? record->Seq : 0;
 	}
 	std::vector<Record> _orders;   // indexed by the global order index packed into the id
 
@@ -234,11 +233,8 @@ private:
 		NewOrderSingle order = NewLimitOrder(_securityId, side, quantity, priceMantissa,
 			std::string(), _senderId, 0, requestId, _location);
 		FormatClientOrderId(clientOrderId, order.ClOrdID);
-		*record = Record{};
-		record->ClientOrderId = clientOrderId;
-		record->Seq = target.OrderHeader.Seq;
-		record->OrderProfile = target.OrderProfile;
-		record->PushRequest(requestId, target.OrderHeader.Seq);
+		*record = Record{clientOrderId, 0, target.OrderHeader.Seq, target.OrderProfile};
+		PushRequest(requestId, target.OrderHeader.Seq);
 		if (OnOrderSent)
 			OnOrderSent(clientOrderId, target.OrderProfile.Ticks, static_cast<int32_t>(quantity), side == SideReq::Buy);
 		if (!_gateway->SendNewOrderSingle(order))
@@ -268,7 +264,7 @@ private:
 		OrderCancelRequest cancel = NewCancel(_securityId, side, record->ExchangeOrderId,
 			std::string(), _senderId, requestId, _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, cancel.ClOrdID);
-		record->PushRequest(requestId, target.OrderHeader.Seq);
+		PushRequest(requestId, target.OrderHeader.Seq);
 		if (!_gateway->SendOrderCancel(cancel))
 			PublishModifyReject(target.OrderHeader.ClientOrderId, record,
 				Execution::OrderTargetAction::Cancel, "session down: cancel not sent", target.OrderHeader.Seq);
@@ -301,7 +297,7 @@ private:
 		OrderCancelReplaceRequest replace = NewReplace(_securityId, side, record->ExchangeOrderId,
 			quantity, priceMantissa, _senderId, requestId, _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, replace.ClOrdID);
-		record->PushRequest(requestId, target.OrderHeader.Seq);
+		PushRequest(requestId, target.OrderHeader.Seq);
 		if (OnOrderSent)
 			OnOrderSent(target.OrderHeader.ClientOrderId, target.OrderProfile.Ticks,
 				static_cast<int32_t>(quantity), side == SideReq::Buy);
