@@ -61,8 +61,15 @@ class BasicMarketSegmentGateway
 	uint64_t _partyDetailsListId = 0;   // non-zero once the parties are pre-registered; 0 = on-demand
 	uint32_t _outboundSeqNo = 1;        // next business message number we will send
 	uint32_t _inboundSeqNo = 1;         // next business message number we expect from CME
-	uint32_t _retransmitPending = 0;    // recovered messages still owed; they replay old numbers
+	uint32_t _replayBelowSeq = 0;       // set at resume: replayed messages carry numbers below this
+	uint32_t _recoverNextFrom = 0;      // where the next recovery batch starts
+	uint32_t _recoverEnd = 0;           // one past the last missed number the recovery must cover
+	uint32_t _batchEnd = 0;             // one past the outstanding batch's last number; 0 = none out
 	uint32_t _reconnectAttempts = 0;    // alternates the primary/backup address across attempts
+
+	// CME serves at most this many messages per retransmit request, one request in flight at
+	// a time — a bigger gap recovers as consecutive batches.
+	static constexpr uint32_t RetransmitBatchLimit = 2500;
 	uint32_t _establishRejects = 0;     // consecutive Establish rejections of the resumed session
 
 	// A resumed session is discarded only after this many consecutive Establish rejections:
@@ -153,7 +160,10 @@ public:
 				_sessionStore.BeginWeek(_uuid);
 		}
 		_partyDetailsListId = 0;
-		_retransmitPending = 0;
+		_replayBelowSeq = 0;
+		_recoverNextFrom = 0;
+		_recoverEnd = 0;
+		_batchEnd = 0;
 
 		// Step 2: Negotiate — but only once per session id: a resumed id that CME already
 		// confirmed skips straight to Establish. If our record says unconfirmed yet CME
@@ -207,17 +217,18 @@ public:
 
 		// Step 4: Session is open (the keep-alive clock starts from this last send). The ack
 		// names CME's next outbound number; on a resume, anything between our counter and it
-		// was published while we were away — ask for it again. The recovered copies replay
-		// their original numbers, so the live counter jumps ahead to the ack's now.
+		// was published while we were away — ask for all of it again, batch by batch. The
+		// recovered copies replay their original numbers, so the live counter jumps ahead to
+		// the ack's now, and replays are recognized by their lower numbers.
 		_state = SessionState::Established;
 		const EstablishmentAck* ack = message.As<EstablishmentAck>();
 		if (resuming && ack->NextSeqNo > _inboundSeqNo)
 		{
-			const uint32_t gap = ack->NextSeqNo - _inboundSeqNo;
-			const uint16_t count = static_cast<uint16_t>(std::min<uint32_t>(gap, 2500));
-			std::cout << "Missed " << gap << " messages while away; requesting retransmission.\n";
-			SendFramed(EncodeRetransmitRequest(_uuid, _inboundSeqNo, count, _sendBuffer));
-			_retransmitPending = count;
+			std::cout << "Missed " << (ack->NextSeqNo - _inboundSeqNo) << " messages while away; recovering.\n";
+			_replayBelowSeq = ack->NextSeqNo;
+			_recoverNextFrom = _inboundSeqNo;
+			_recoverEnd = ack->NextSeqNo;
+			RequestNextRetransmitBatch();
 			_inboundSeqNo = ack->NextSeqNo;
 		}
 		PersistSequences();
@@ -498,8 +509,8 @@ public:
 		}
 	}
 
-	// Recovered messages still owed after a resume; zero once the replay has drained.
-	uint32_t RetransmitPending() const { return _retransmitPending; }
+	// True while a resume's recovery is still owed messages (drains via Poll).
+	bool RecoveryOutstanding() const { return _batchEnd != 0; }
 
 	// Test hook: kill the connection without a Terminate, exactly as a network failure would,
 	// so the reconnect path can be exercised. May be called from another thread; the owning
@@ -613,6 +624,22 @@ private:
 		_consumed = 0;
 	}
 
+	// Ask for the next slice of the missed messages, or note the recovery complete. CME
+	// serves one bounded request at a time; the last message of each batch triggers the next.
+	void RequestNextRetransmitBatch()
+	{
+		if (_recoverNextFrom >= _recoverEnd)
+		{
+			_batchEnd = 0;
+			std::cout << "Recovery complete.\n";
+			return;
+		}
+		const uint32_t count = std::min(_recoverEnd - _recoverNextFrom, RetransmitBatchLimit);
+		SendFramed(EncodeRetransmitRequest(_uuid, _recoverNextFrom, static_cast<uint16_t>(count), _sendBuffer));
+		_batchEnd = _recoverNextFrom + count;
+		_recoverNextFrom = _batchEnd;
+	}
+
 	// Mirror the sequence counters into the persistent store. Callers advance a counter and
 	// persist BEFORE the message it numbers reaches the wire: the stored value can then only
 	// ever run ahead of what CME saw, and a crash replays as a benign gap (which NotApplied
@@ -659,8 +686,23 @@ private:
 			}
 			case Retransmission::TemplateId:
 			{
-				// CME granting a retransmit request; the recovered messages follow.
-				std::cout << "CME Retransmission: " << message.As<Retransmission>()->ToString() << "\n";
+				// CME granting a retransmit request; the recovered messages follow. The grant
+				// is authoritative about what will actually replay — a short grant (messages
+				// no longer available) would otherwise leave the batch waiting forever.
+				const Retransmission* grant = message.As<Retransmission>();
+				std::cout << "CME Retransmission: " << grant->ToString() << "\n";
+				const uint32_t grantEnd = grant->FromSeqNo + grant->MsgCount;
+				if (_batchEnd != 0 && grantEnd != _batchEnd)
+				{
+					std::cout << "Recovery batch granted short of the request; the shortfall stays missed.\n";
+					if (grant->MsgCount == 0)
+					{
+						_recoverNextFrom = _recoverEnd;
+						_batchEnd = 0;
+					}
+					else
+						_batchEnd = grantEnd;
+				}
 				break;
 			}
 			case RetransmitReject::TemplateId:
@@ -668,19 +710,27 @@ private:
 				// The recovery request failed — anything missed stays missed; make it loud.
 				std::cout << "CME RetransmitReject (missed messages NOT recovered): "
 				          << message.As<RetransmitReject>()->ToString() << "\n";
-				_retransmitPending = 0;
+				_recoverNextFrom = _recoverEnd;
+				_batchEnd = 0;
 				break;
 			}
 			default:
 			{
 				// A business message (execution report and the like): forward it, then count
 				// it — in that order, so a crash mid-handling re-recovers the message rather
-				// than losing it. Recovered copies replay their original numbers, which the
-				// live counter already jumped past at logon, so they are not counted again.
+				// than losing it. Every business message begins with its own number, so a
+				// recovery replay (below the resume point) is told apart from live flow
+				// exactly: replays are not counted — the live counter jumped past them at
+				// logon — and the one finishing a batch asks for the next.
 				if (OnBusinessMessage)
 					OnBusinessMessage(message);
-				if (_retransmitPending > 0)
-					--_retransmitPending;
+				uint32_t sequenceNumber = 0;
+				std::memcpy(&sequenceNumber, message.Body, sizeof(sequenceNumber));
+				if (_replayBelowSeq != 0 && sequenceNumber < _replayBelowSeq)
+				{
+					if (_batchEnd != 0 && sequenceNumber + 1 >= _batchEnd)
+						RequestNextRetransmitBatch();
+				}
 				else
 				{
 					++_inboundSeqNo;

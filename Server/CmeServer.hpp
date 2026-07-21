@@ -23,6 +23,7 @@
 
 #include "CmeServerConfig.hpp"
 #include "MarketSegments.hpp"
+#include "TradingStatus.hpp"
 #include "ILink3Config.hpp"
 #include "CmeLogger.hpp"
 #include "MarketSegmentGateway.hpp"
@@ -75,6 +76,7 @@ class BasicCmeServer
 			int32_t InstrumentId = 0;
 			double TickSize = 0.0;
 			double DisplayFactor = 0.0;
+			char Asset[8] = {};   // the product group, for group-wide status events
 		};
 		static constexpr uint32_t SubscriptionRingLength = 256;
 		std::array<Subscription, SubscriptionRingLength> Subscriptions;
@@ -173,6 +175,10 @@ public:
 			segment->Books.OnTrade = [this](const Data::Trade& trade)
 			{
 				_server.OnTrade(trade);
+			};
+			segment->Books.OnTradingStatus = [this](int32_t instrumentId, Mdp3::SecurityTradingStatus status, Tools::Timestamp exchangeTime)
+			{
+				PublishTradingStatus(instrumentId, status, exchangeTime);
 			};
 
 			// The queue tracker reads the authoritative book (this market-data thread writes it,
@@ -385,6 +391,35 @@ private:
 		}
 	}
 
+	// A trading-state change from the feed: map the exchange's wording onto ours, stamp the
+	// instrument header's status byte (strategies poll it beside the catalog data), and
+	// broadcast a status tick on the instrument's ring so replicas hear the change as an
+	// event. Runs on the market-data thread.
+	void PublishTradingStatus(int32_t instrumentId, Mdp3::SecurityTradingStatus raw, Tools::Timestamp exchangeTime)
+	{
+		// Step 1: The neutral state.
+		const Data::TradingStatus status = FromCme(raw);
+
+		// Step 2: The polled header field, under the entry's write lock.
+		const int32_t headerId = _server.Context().GetInstrumentHeaderIdByInstrumentId(instrumentId).Read();
+		Socket::SharedArrayEntry<Data::InstrumentHeader128>& entry = _server.Context().GetInstrumentHeader(headerId);
+		entry.AcquireLock();
+		entry.GetRef().AsInstrumentHeader().TradingStatus = status;
+		entry.ReleaseLock();
+
+		// Step 3: The event.
+		TradingStatusTick tick{};
+		tick.TickHeader.TickType = TradingStatusTickType;
+		tick.TickHeader.InstrumentId = instrumentId;
+		tick.TickHeader.ExchangeTimestamp = exchangeTime;
+		tick.TickHeader.SendingTimestamp = Tools::Timestamp::UtcNow();
+		tick.TradingStatus = status;
+		_server.WriteToInstrumentData(tick);
+
+		std::cout << "CmeServer: instrument " << instrumentId << " trading status "
+		          << magic_enum::enum_name(status) << " (CME " << magic_enum::enum_name(raw) << ")\n";
+	}
+
 	// Commit every instrument in the security-definition file — the whole universe, futures and
 	// calendar spreads alike. Instruments on a served segment carry its core group; the rest
 	// stay browsable in the catalog but route nowhere until their segment is added. Catalog
@@ -501,10 +536,13 @@ private:
 
 		_routers[static_cast<size_t>(allocate.InstrumentId)] = std::move(router);
 
-		// Step 4: Hand the market-data subscription to the segment's market-data thread.
+		// Step 4: Hand the market-data subscription to the segment's market-data thread. The
+		// product group rides along so group-wide status events reach this instrument.
 		const uint32_t written = segment->SubscriptionsWritten.load(std::memory_order_relaxed);
-		segment->Subscriptions[written % Segment::SubscriptionRingLength] =
-			typename Segment::Subscription{loaded.SecurityID, allocate.InstrumentId, tickSize, loaded.DisplayFactor};
+		typename Segment::Subscription subscription{loaded.SecurityID, allocate.InstrumentId, tickSize, loaded.DisplayFactor};
+		const std::string asset = loaded.Header.AsInstrumentHeader().Root.ToString();
+		std::memcpy(subscription.Asset, asset.data(), std::min(asset.size(), sizeof(subscription.Asset) - 1));
+		segment->Subscriptions[written % Segment::SubscriptionRingLength] = subscription;
 		segment->SubscriptionsWritten.store(written + 1, std::memory_order_release);
 
 		std::cout << "CmeServer: instrument " << allocate.InstrumentId << " -> SecurityID "
@@ -525,7 +563,7 @@ private:
 					const typename Segment::Subscription& subscription =
 						segment.Subscriptions[segment.SubscriptionsRead % Segment::SubscriptionRingLength];
 					segment.Books.Subscribe(subscription.SecurityID, subscription.InstrumentId,
-						subscription.TickSize, subscription.DisplayFactor);
+						subscription.TickSize, subscription.DisplayFactor, subscription.Asset);
 					++segment.SubscriptionsRead;
 				}
 				while (segment.QueueRead != segment.QueueWritten.load(std::memory_order_acquire))
@@ -590,7 +628,7 @@ private:
 		segment.Gateway->SetPartyDetailsListId(_partyDetailsListId);
 		segment.Gateway->SetReceiveTimeout(1);
 		const int64_t drainDeadline = Tools::Timestamp::UtcNow().NanosSinceEpoch + 3'000'000'000LL;
-		while (segment.Gateway->RetransmitPending() > 0
+		while (segment.Gateway->RecoveryOutstanding()
 		    && Tools::Timestamp::UtcNow().NanosSinceEpoch < drainDeadline)
 			segment.Gateway->Poll();
 
