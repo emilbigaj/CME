@@ -45,15 +45,19 @@ int main(int argc, char** argv)
 {
 	if (argc < 5)
 	{
-		std::cerr << "usage: CmeServerTests <settings.json> <secdef.dat> <config.xml> <securityId> [ticksBelowBid=0] [leave]\n";
+		std::cerr << "usage: CmeServerTests <settings.json> <secdef.dat> <config.xml> <securityId> [ticksBelowBid=0] [leave|drop]\n";
 		return 2;
 	}
 	const int32_t securityId = std::stoi(argv[4]);
 	const int32_t ticksBelowBid = (argc > 5) ? std::stoi(argv[5]) : 0;
-	// Leave the working order in place (skip the cancel): on disconnect CME cancels it and
-	// publishes the cancel report into the closed session — the next run must recover it by
-	// retransmission, which is exactly what this mode exists to prove.
-	const bool leaveOrder = argc > 6 && std::string(argv[6]) == "leave";
+	// Two failure-path modes. "leave" keeps the working order (skips the cancel): on
+	// disconnect CME cancels it and publishes the cancel report into the closed session — the
+	// NEXT run must recover it by retransmission. "drop" kills the connection mid-run with
+	// the order still working: THIS run must reconnect, resume, recover the cancel report,
+	// and land it in the live order state — the full mid-session recovery path.
+	const std::string mode = argc > 6 ? argv[6] : "";
+	const bool leaveOrder = mode == "leave";
+	const bool dropConnection = mode == "drop";
 
 	try
 	{
@@ -200,6 +204,19 @@ int main(int argc, char** argv)
 							std::cout << "Leaving the order working (retransmission test)." << std::endl;
 							done = true;
 							break;
+						}
+
+						// Drop mode kills the connection with the order still working, then
+						// pauses while the server reconnects (CME refuses an immediate
+						// re-establishment while it still holds the dropped connection, and
+						// within its grace window the session — and the order — survive).
+						// The cancel below then rides the RESUMED session: reaching Done
+						// proves the order lived through the drop and the session came back.
+						if (dropConnection)
+						{
+							std::cout << "Dropping the connection (reconnect test)..." << std::endl;
+							cme.DropConnections();
+							std::this_thread::sleep_for(std::chrono::seconds(4));
 						}
 
 						// A cancel carries the empty cancel profile — a next-revision target with

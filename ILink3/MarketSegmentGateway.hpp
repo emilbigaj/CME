@@ -59,6 +59,13 @@ class MarketSegmentGateway
 	uint32_t _outboundSeqNo = 1;        // next business message number we will send
 	uint32_t _inboundSeqNo = 1;         // next business message number we expect from CME
 	uint32_t _retransmitPending = 0;    // recovered messages still owed; they replay old numbers
+	uint32_t _reconnectAttempts = 0;    // alternates the primary/backup address across attempts
+	uint32_t _establishRejects = 0;     // consecutive Establish rejections of the resumed session
+
+	// A resumed session is discarded only after this many consecutive Establish rejections:
+	// the common cause is CME still holding the dropped connection (the session is fine and a
+	// retry succeeds), and discarding early abandons the recovery replay queued on it.
+	static constexpr uint32_t DiscardSessionAfterRejects = 5;
 	int64_t _lastSendNanos = 0;         // when we last sent anything, for the keep-alive clock
 	SessionStore _sessionStore;         // when open, the session id and counters survive restarts
 
@@ -172,22 +179,28 @@ public:
 		}
 
 		// Step 3: Send Establish carrying our next outbound number and require an
-		// EstablishmentAck. A resumed session CME no longer recognizes cannot be repaired —
-		// forget it and log in once more from scratch.
+		// EstablishmentAck. A rejected resume is retried on the SAME session — the reject's
+		// commonest cause is CME still holding the dropped connection, and the recovery replay
+		// is queued on that session; only a persistent string of rejections means it is truly
+		// gone, and only then is it discarded for a fresh start.
 		SendFramed(EncodeEstablish(_config, _uuid, RequestTimestampNow(), _outboundSeqNo, _sendBuffer));
 		if (!ReceiveMessage(message))
 			return false;
 		if (message.TemplateId != EstablishmentAck::TemplateId)
 		{
-			ReportUnexpected("Establish", message);
-			if (resuming)
+			std::cout << "Establish got " << ToObjectType(message.TemplateId) << ": "
+			          << ToJsonLine(message.TemplateId, message.Body) << "\n";
+			if (resuming && ++_establishRejects >= DiscardSessionAfterRejects)
 			{
-				std::cout << "Discarding the stored session and starting the week over.\n";
+				std::cout << "Discarding the stored session after " << _establishRejects
+				          << " rejections and starting the week over.\n";
+				_establishRejects = 0;
 				_sessionStore.Clear();
 				return Logon();
 			}
 			return false;
 		}
+		_establishRejects = 0;
 
 		// Step 4: Session is open (the keep-alive clock starts from this last send). The ack
 		// names CME's next outbound number; on a resume, anything between our counter and it
@@ -343,7 +356,7 @@ public:
 		++_outboundSeqNo;
 		PersistSequences();
 		SendFramed(length);
-		return true;
+		return _state == SessionState::Established;   // false when the send found the connection dead
 	}
 
 	// Send an order cancel. Every order-management message carries the session's party id — the
@@ -374,7 +387,7 @@ public:
 		++_outboundSeqNo;
 		PersistSequences();
 		SendFramed(length);
-		return true;
+		return _state == SessionState::Established;   // false when the send found the connection dead
 	}
 
 	// Send an order replace (new price/size for a working order). Like every order-management
@@ -405,17 +418,22 @@ public:
 		++_outboundSeqNo;
 		PersistSequences();
 		SendFramed(length);
-		return true;
+		return _state == SessionState::Established;   // false when the send found the connection dead
 	}
 
 	// One service pass, called in a loop by the owning thread: take in whatever has arrived,
-	// then send a heartbeat if we have been silent too long.
+	// then send a heartbeat if we have been silent too long. A dropped session has nothing to
+	// service — the owner's reconnect path is in charge until it is back.
 	void Poll()
 	{
-		// Step 1: Drain any messages that have arrived.
+		// Step 1: Nothing to do without a connection.
+		if (_state == SessionState::Disconnected)
+			return;
+
+		// Step 2: Drain any messages that have arrived.
 		ReceiveAvailable();
 
-		// Step 2: Keep the session alive.
+		// Step 3: Keep the session alive.
 		MaybeSendKeepAlive();
 	}
 
@@ -437,13 +455,76 @@ public:
 		_state = SessionState::Disconnected;
 	}
 
+	// One reconnect attempt for a dropped session: alternate between the primary and backup
+	// gateway addresses and log in again. A persistent gateway resumes the week's session and
+	// recovers what it missed; the owner paces the attempts. Returns true once the session is
+	// open again.
+	bool TryReconnect()
+	{
+		// Step 1: Nothing to do on a live session; otherwise start from a clean connection.
+		if (_state == SessionState::Established)
+			return true;
+		MarkConnectionDead();
+
+		// Step 2: Pick the address: the configured preference first, the other side on every
+		// second attempt (when a backup exists).
+		bool secondary = _useSecondary;
+		if (!_segment.SecondaryIPAddress.empty() && (_reconnectAttempts % 2) == 1)
+			secondary = !secondary;
+		++_reconnectAttempts;
+		const std::string ip = secondary ? _segment.SecondaryIPAddress : _segment.PrimaryIPAddress;
+
+		// Step 3: Connect and log in; any failure just reports false and the owner retries.
+		try
+		{
+			_connection.Connect(ip, _config.Port, /*recvTimeoutSeconds*/ 1);
+			_state = SessionState::Connected;
+			if (!Logon())
+			{
+				MarkConnectionDead();
+				return false;
+			}
+			std::cout << "Reconnected to " << ip << " (segment " << _segment.MarketSegmentID << ").\n";
+			return true;
+		}
+		catch (const std::exception& error)
+		{
+			std::cout << "Reconnect to " << ip << " failed: " << error.what() << "\n";
+			MarkConnectionDead();
+			return false;
+		}
+	}
+
+	// Recovered messages still owed after a resume; zero once the replay has drained.
+	uint32_t RetransmitPending() const { return _retransmitPending; }
+
+	// Test hook: kill the connection without a Terminate, exactly as a network failure would,
+	// so the reconnect path can be exercised. May be called from another thread; the owning
+	// thread's next receive fails and lands in the same dead-connection handling.
+	void DropConnection()
+	{
+		_connection.Close();
+		_state = SessionState::Disconnected;
+	}
+
 private:
 	// Send a framed message (already written into _sendBuffer) and log it strictly after the
 	// send returns. Also restarts the keep-alive clock, since any send counts as activity.
 	void SendFramed(size_t length)
 	{
-		// Step 1: Hand the bytes to the connection.
-		_connection.SendAll(std::span<const uint8_t>(_sendBuffer.data(), length));
+		// Step 1: Hand the bytes to the connection. A dead connection surfaces here: mark the
+		// session down for the owner's reconnect path. The sequence counters were persisted
+		// ahead of this write, so an unsent message resolves as a benign gap after reconnect.
+		try
+		{
+			_connection.SendAll(std::span<const uint8_t>(_sendBuffer.data(), length));
+		}
+		catch (const std::exception& error)
+		{
+			std::cout << "Connection lost on send: " << error.what() << "\n";
+			MarkConnectionDead();
+			return;
+		}
 
 		// Step 2: Stamp and log after the transport is done.
 		const int64_t stamp = Tools::Timestamp::UtcNow().NanosSinceEpoch;
@@ -458,12 +539,23 @@ private:
 	// is now buffered. Does not block waiting for a specific message.
 	void ReceiveAvailable()
 	{
-		// Step 1: One read. A timeout (-1) just means nothing arrived this pass.
-		ssize_t n = _connection.Recv(_chunk);
+		// Step 1: One read. A timeout (-1) just means nothing arrived this pass; a peer close
+		// or a read error means the connection is gone.
+		ssize_t n;
+		try
+		{
+			n = _connection.Recv(_chunk);
+		}
+		catch (const std::exception& error)
+		{
+			std::cout << "Connection lost on receive: " << error.what() << "\n";
+			MarkConnectionDead();
+			return;
+		}
 		if (n <= 0)
 		{
 			if (n == 0)
-				_state = SessionState::Disconnected;   // peer closed
+				MarkConnectionDead();   // peer closed
 			return;
 		}
 		const int64_t stamp = Tools::Timestamp::UtcNow().NanosSinceEpoch;
@@ -505,6 +597,17 @@ private:
 	void SendKeepAlive()
 	{
 		SendFramed(EncodeSequence(_uuid, _outboundSeqNo, _sendBuffer));
+	}
+
+	// The connection is gone: close it, mark the session down, and throw away any half
+	// received bytes — a partial message from the dead connection must never be framed
+	// against the next one.
+	void MarkConnectionDead()
+	{
+		_connection.Close();
+		_state = SessionState::Disconnected;
+		_recvBuffer.clear();
+		_consumed = 0;
 	}
 
 	// Mirror the sequence counters into the persistent store. Callers advance a counter and
@@ -605,10 +708,20 @@ private:
 				_consumed += message.TotalLength;
 				return true;
 			}
-			ssize_t n = _connection.Recv(_chunk);
+			ssize_t n;
+			try
+			{
+				n = _connection.Recv(_chunk);
+			}
+			catch (const std::exception& error)
+			{
+				std::cout << "Connection lost on receive: " << error.what() << "\n";
+				MarkConnectionDead();
+				return false;
+			}
 			if (n == 0)
 			{
-				_state = SessionState::Disconnected;
+				MarkConnectionDead();
 				return false;
 			}
 			if (n < 0)

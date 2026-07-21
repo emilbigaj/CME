@@ -94,6 +94,23 @@ public:
 
 	int32_t InstrumentId() const { return _instrumentId; }
 	int32_t SecurityID() const { return _securityId; }
+	const MarketSegmentGateway* Gateway() const { return _gateway; }
+
+	// After a reconnect has recovered everything the exchange published, any slot still
+	// waiting for its exchange id belongs to an order whose send died with the old connection
+	// — the exchange never saw it (an acknowledged one would have been replayed by now). Fail
+	// each back to the strategy so it can decide again. Returns how many were failed.
+	int32_t SweepUnacknowledged()
+	{
+		int32_t swept = 0;
+		for (Record& record : _orders)
+			if (record.ClientOrderId != 0 && record.ExchangeOrderId == 0)
+			{
+				FailUnsent(record);
+				++swept;
+			}
+		return swept;
+	}
 
 	// Route one order intent from the server to CME.
 	void OnOrderTarget(const Execution::OrderTarget& target)
@@ -178,7 +195,8 @@ private:
 		*record = Record{clientOrderId, 0, target.OrderHeader.Seq, target.OrderProfile};
 		if (OnOrderSent)
 			OnOrderSent(clientOrderId, target.OrderProfile.Ticks, static_cast<int32_t>(quantity), side == SideReq::Buy);
-		_gateway->SendNewOrderSingle(order);
+		if (!_gateway->SendNewOrderSingle(order))
+			FailUnsent(*record);   // the session is down; the exchange never saw this order
 	}
 
 	// Cancel a working order, referencing it by the exchange id we kept from its acceptance.
@@ -193,7 +211,9 @@ private:
 			std::string(), _senderId, _nextOrderRequestId++, _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, cancel.ClOrdID);
 		record->Seq = target.OrderHeader.Seq;   // the cancel is this revision
-		_gateway->SendOrderCancel(cancel);
+		if (!_gateway->SendOrderCancel(cancel))
+			PublishModifyReject(target.OrderHeader.ClientOrderId, record,
+				Execution::OrderTargetAction::Cancel, "session down: cancel not sent");
 	}
 
 	// Move a working order to a new price/size, referencing it by the exchange id. The slot's
@@ -216,7 +236,9 @@ private:
 		if (OnOrderSent)
 			OnOrderSent(target.OrderHeader.ClientOrderId, target.OrderProfile.Ticks,
 				static_cast<int32_t>(quantity), side == SideReq::Buy);
-		_gateway->SendOrderCancelReplace(replace);
+		if (!_gateway->SendOrderCancelReplace(replace))
+			PublishModifyReject(target.OrderHeader.ClientOrderId, record,
+				Execution::OrderTargetAction::Amend, "session down: replace not sent");
 	}
 
 	// ---- inbound ----
@@ -359,16 +381,21 @@ private:
 			OnOrderState(state);
 	}
 
-	// A cancel or replace was refused: the order stays working as it was, so keep the slot and
-	// publish the rejection with the exchange's reason text.
+	// A cancel or replace was refused by the exchange: the order stays working as it was.
 	void HandleModifyReject(const Tools::StringN<20>& clOrdId, const Tools::StringN<256>& text,
 	                        Execution::OrderTargetAction action)
 	{
 		uint64_t clientOrderId = 0;
 		if (!TryParseClientOrderId(clOrdId, clientOrderId))
 			return;
-		Record* record = Find(clientOrderId);
+		PublishModifyReject(clientOrderId, Find(clientOrderId), action, text.ToString());
+	}
 
+	// A refused cancel or replace, from the exchange or from a dead session alike: the order
+	// stays working as it was, so keep the slot and publish the rejection with the reason.
+	void PublishModifyReject(uint64_t clientOrderId, Record* record,
+	                         Execution::OrderTargetAction action, const std::string& text)
+	{
 		Execution::OrderRejected rejected{};
 		rejected.OrderHeader.ClientOrderId = clientOrderId;
 		rejected.OrderHeader.InstrumentId = _instrumentId;
@@ -387,7 +414,26 @@ private:
 				OnOrderLive(clientOrderId, record->ExchangeOrderId);
 		}
 		if (OnOrderRejected)
-			OnOrderRejected(rejected, text.ToString());
+			OnOrderRejected(rejected, text);
+	}
+
+	// An order the exchange never saw (its send died with the connection): free the slot,
+	// disarm the queue tracking, and reject it back so the strategy can decide again.
+	void FailUnsent(Record& record)
+	{
+		const uint64_t clientOrderId = record.ClientOrderId;
+		Execution::OrderRejected rejected{};
+		rejected.OrderHeader.ClientOrderId = clientOrderId;
+		rejected.OrderHeader.InstrumentId = _instrumentId;
+		rejected.OrderHeader.Seq = record.Seq;
+		rejected.OrderTargetAction = Execution::OrderTargetAction::Create;
+		rejected.OrderRejectedSource = Execution::OrderRejectedSource::Server;
+		rejected.OrderProfile = record.OrderProfile;
+		record.ClientOrderId = 0;
+		if (OnOrderDone)
+			OnOrderDone(clientOrderId);
+		if (OnOrderRejected)
+			OnOrderRejected(rejected, "session down: order never reached the exchange");
 	}
 
 	// ---- helpers ----

@@ -7,8 +7,10 @@
 // Send / Recv surface.
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -50,8 +52,10 @@ public:
 	// True while a connection is open.
 	bool IsOpen() const { return _fd >= 0; }
 
-	// Open a blocking connection to the numeric address and port; throws on any failure.
-	void Connect(const std::string& ip, uint16_t port, int recvTimeoutSeconds = 10)
+	// Open a blocking connection to the numeric address and port; throws on any failure. The
+	// handshake itself is bounded by connectTimeoutMs, so a dead or unreachable gateway fails
+	// fast instead of holding the calling thread for the operating system's long default.
+	void Connect(const std::string& ip, uint16_t port, int recvTimeoutSeconds = 10, int connectTimeoutMs = 2000)
 	{
 		// Step 1: Drop any connection already held so this object owns at most one.
 		Close();
@@ -83,14 +87,35 @@ public:
 			throw std::runtime_error("TcpConnection: bad address " + ip);
 		}
 
-		// Step 6: Perform the connection handshake; clean up and throw on failure, capturing
-		// the error reason before Close() can overwrite it.
+		// Step 6: Perform the handshake without blocking beyond the time limit: start it with
+		// the socket in non-blocking mode, wait for the result with a bounded poll, then read
+		// the outcome and restore blocking mode.
+		const int flags = ::fcntl(_fd, F_GETFL, 0);
+		::fcntl(_fd, F_SETFL, flags | O_NONBLOCK);
 		if (::connect(_fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0)
 		{
-			std::string reason = std::strerror(errno);
-			Close();
-			throw std::runtime_error("TcpConnection: connect(" + ip + ":" + std::to_string(port) + ") failed: " + reason);
+			if (errno != EINPROGRESS)
+			{
+				std::string reason = std::strerror(errno);
+				Close();
+				throw std::runtime_error("TcpConnection: connect(" + ip + ":" + std::to_string(port) + ") failed: " + reason);
+			}
+			pollfd waiter{_fd, POLLOUT, 0};
+			if (::poll(&waiter, 1, connectTimeoutMs) != 1)
+			{
+				Close();
+				throw std::runtime_error("TcpConnection: connect(" + ip + ":" + std::to_string(port) + ") timed out");
+			}
+			int error = 0;
+			socklen_t length = sizeof(error);
+			::getsockopt(_fd, SOL_SOCKET, SO_ERROR, &error, &length);
+			if (error != 0)
+			{
+				Close();
+				throw std::runtime_error("TcpConnection: connect(" + ip + ":" + std::to_string(port) + ") failed: " + std::strerror(error));
+			}
 		}
+		::fcntl(_fd, F_SETFL, flags);
 	}
 
 	// Change the receive time limit on the open connection. Logon uses a generous limit (a

@@ -80,6 +80,8 @@ class CmeServer
 		std::array<Mdp3::QueueTracker::Command, QueueRingLength> QueueCommands;
 		std::atomic<uint32_t> QueueWritten{0};           // execution thread advances (release)
 		uint32_t QueueRead = 0;                          // market-data thread only
+
+		int64_t NextReconnectNanos = 0;                  // paces reconnect attempts (execution thread only)
 	};
 
 	// Hand one queue-tracking command across a segment's ring.
@@ -107,6 +109,7 @@ class CmeServer
 	// ---- service threads ----
 	std::vector<std::thread> _threads;
 	std::atomic<bool> _running{false};
+	uint64_t _partyDetailsListId = 0;   // the registered party id; reapplied after every reconnect
 
 public:
 	// Raised with any exception a service thread catches; the owner wires it to the alerts.
@@ -214,6 +217,14 @@ public:
 
 	Provider::Server& Server() { return _server; }
 
+	// Test hook: kill every segment's connection without a Terminate, as a network failure
+	// would, so the reconnect path can be exercised end to end.
+	void DropConnections()
+	{
+		for (std::unique_ptr<Segment>& segment : _segments)
+			segment->Gateway->DropConnection();
+	}
+
 	// The catalog position of an instrument by its exchange id, or -1 if not committed.
 	int32_t FindInstrumentHeaderId(int32_t securityId) const
 	{
@@ -232,7 +243,7 @@ public:
 		// Step 2: Register the trading parties once on the Order Entry Service Gateway, so
 		// every order references the registered id instead of dragging its own definition.
 		// 0 (not configured, or registration failed) means on-demand mode.
-		const uint64_t partyDetailsListId = RegisterParties();
+		_partyDetailsListId = RegisterParties();
 
 		// Step 3: Open every segment's venue connections: log on to the order gateway (the
 		// serving loop then shortens its receive limit so a quiet connection hands control
@@ -242,7 +253,7 @@ public:
 			segment->Gateway->Connect();
 			if (!segment->Gateway->Logon())
 				throw std::runtime_error("CmeServer: logon failed on segment " + std::to_string(segment->Config.MarketSegmentID));
-			segment->Gateway->SetPartyDetailsListId(partyDetailsListId);
+			segment->Gateway->SetPartyDetailsListId(_partyDetailsListId);
 			segment->Gateway->SetReceiveTimeout(1);
 
 			const Mdp3::Channel* channel = _channels.FindChannel(segment->Config.Channel);
@@ -529,7 +540,9 @@ private:
 		}
 	}
 
-	// The execution owner: drain the strategies' order targets, then poll the gateway.
+	// The execution owner: drain the strategies' order targets, poll the gateway, and bring a
+	// dropped session back. Targets keep draining while the session is down — the routers
+	// reject them straight back, so strategies always know where they stand.
 	void RunExecution(Segment& segment)
 	{
 		while (_running.load(std::memory_order_relaxed))
@@ -538,8 +551,46 @@ private:
 			{
 				_server.ReadExecution(segment.Config.CoreGroupId);
 				segment.Gateway->Poll();
+				if (segment.Gateway->State() == ILink3::SessionState::Disconnected)
+					MaybeReconnect(segment);
 			});
 		}
+	}
+
+	// One paced reconnect attempt for a segment whose session has dropped. On success the
+	// resumed session has already asked for everything it missed; drain that replay (bounded),
+	// re-apply the party registration, then fail any order whose send died with the old
+	// connection — the exchange never saw it, its acknowledgment would have replayed by now.
+	void MaybeReconnect(Segment& segment)
+	{
+		// Step 1: Pace the attempts (CME refuses an immediate reconnect while it still tears
+		// the old session down); the address alternation covers primary and backup.
+		const int64_t now = Tools::Timestamp::UtcNow().NanosSinceEpoch;
+		if (now < segment.NextReconnectNanos)
+			return;
+		segment.NextReconnectNanos = now + 1'000'000'000LL;
+		std::cout << "CmeServer: segment " << segment.Config.MarketSegmentID << " session down; reconnecting...\n";
+		if (!segment.Gateway->TryReconnect())
+			return;
+
+		// Step 2: The session is back: restore its settings and drain the recovery replay so
+		// working-order state is current before anything new happens.
+		segment.Gateway->SetPartyDetailsListId(_partyDetailsListId);
+		segment.Gateway->SetReceiveTimeout(1);
+		const int64_t drainDeadline = Tools::Timestamp::UtcNow().NanosSinceEpoch + 3'000'000'000LL;
+		while (segment.Gateway->RetransmitPending() > 0
+		    && Tools::Timestamp::UtcNow().NanosSinceEpoch < drainDeadline)
+			segment.Gateway->Poll();
+
+		// Step 3: Whatever is still unacknowledged was lost with the old connection.
+		for (const std::unique_ptr<ILink3::InstrumentRouter>& router : _routers)
+			if (router != nullptr && router->Gateway() == segment.Gateway.get())
+			{
+				const int32_t swept = router->SweepUnacknowledged();
+				if (swept > 0)
+					std::cout << "CmeServer: instrument " << router->InstrumentId() << ": failed "
+					          << swept << " orders the exchange never saw.\n";
+			}
 	}
 
 	// Pin the calling thread to its segment core at real-time priority; degrade loudly but
