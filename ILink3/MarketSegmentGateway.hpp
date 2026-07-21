@@ -37,6 +37,58 @@
 namespace ILink3
 {
 
+// Remembers what each in-flight order request was for — the tag (an order revision) its
+// session-unique id went out under — until the response that echoes the id consumes it. A
+// ring, not a map: requests are pushed in id order and almost always answered promptly, so
+// the outstanding window stays tiny; taking an entry frees its slot and the read frontier
+// compacts past consumed slots, so a live entry is only ever overwritten once the ring holds
+// a full capacity of genuinely unanswered requests. One thread owns the session and drives
+// both sides, so everything here is plain.
+class OrderRequestRing
+{
+	struct Entry
+	{
+		uint64_t RequestId = 0;   // 0 = empty; never a real id (the counter is clock-seeded)
+		int32_t Tag = 0;
+	};
+	static constexpr uint64_t Capacity = 1 << 16;
+	std::vector<Entry> _entries = std::vector<Entry>(Capacity);
+	uint64_t _writeIndex = 0;
+	uint64_t _readIndex = 0;
+
+public:
+	// Remember `tag` for `requestId`; always claims the next slot.
+	void Push(uint64_t requestId, int32_t tag)
+	{
+		_entries[_writeIndex & (Capacity - 1)] = Entry{requestId, tag};
+		++_writeIndex;
+	}
+
+	// Find `requestId`, hand back its tag, and free the slot; `fallback` on a miss. The scan
+	// is bounded by the genuinely outstanding window, which prompt responses keep tiny.
+	int32_t Take(uint64_t requestId, int32_t fallback)
+	{
+		// Step 1: A lapped ring has lost its oldest entries; never scan what is gone.
+		if (_writeIndex - _readIndex > Capacity)
+			_readIndex = _writeIndex - Capacity;
+
+		// Step 2: Oldest first; on the find, free the slot and compact the frontier.
+		for (uint64_t index = _readIndex; index < _writeIndex; ++index)
+		{
+			Entry& entry = _entries[index & (Capacity - 1)];
+			if (entry.RequestId == requestId && requestId != 0)
+			{
+				const int32_t tag = entry.Tag;
+				entry.RequestId = 0;   // taken
+				while (_readIndex < _writeIndex && _entries[_readIndex & (Capacity - 1)].RequestId == 0)
+					++_readIndex;
+				return tag;
+			}
+		}
+		return fallback;
+	}
+};
+
 // Where a gateway is in its lifecycle.
 enum class SessionState : uint8_t
 {
@@ -67,6 +119,7 @@ class BasicMarketSegmentGateway
 	uint32_t _batchEnd = 0;             // one past the outstanding batch's last number; 0 = none out
 	uint32_t _reconnectAttempts = 0;    // alternates the primary/backup address across attempts
 	uint64_t _nextOrderRequestId = 1;   // session-unique order-request ids for every router on this session
+	OrderRequestRing _orderRequests;    // what each in-flight request was for, until its response takes it
 
 	// CME serves at most this many messages per retransmit request, one request in flight at
 	// a time — a bigger gap recovers as consecutive batches.
@@ -249,10 +302,23 @@ public:
 	// Non-zero once a registered party id is in effect; 0 means on-demand mode.
 	uint64_t PartyDetailsListId() const { return _partyDetailsListId; }
 
-	// The next order-request id: unique across every order and router on this session (2422
-	// is echoed on every response; the wire requires it unique, so it cannot be the per-order
-	// revision — routers correlate the echo back to a revision themselves).
-	uint64_t NextOrderRequestId() { return _nextOrderRequestId++; }
+	// Claim the next order-request id — unique across every order and router on this session
+	// (2422 is echoed on every response, so it cannot be the per-order revision) — remembering
+	// the caller's tag (the order revision; opaque here) for the echo to resolve. The id space
+	// is session-scoped, so its memory is too.
+	uint64_t NextOrderRequestId(int32_t tag)
+	{
+		const uint64_t requestId = _nextOrderRequestId++;
+		_orderRequests.Push(requestId, tag);
+		return requestId;
+	}
+
+	// The tag remembered for an echoed request id, consuming its entry; the fallback when it
+	// is gone (already taken, lapped, an unsolicited event, or a zero echo).
+	int32_t TagOfOrderRequest(uint64_t requestId, int32_t fallback)
+	{
+		return _orderRequests.Take(requestId, fallback);
+	}
 
 	// Adopt a party id registered elsewhere (on the Order Entry Service Gateway), so every
 	// order this session sends references it instead of dragging its own definition.

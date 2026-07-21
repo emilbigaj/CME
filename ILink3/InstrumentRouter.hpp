@@ -67,35 +67,15 @@ class BasicInstrumentRouter
 		Execution::OrderProfile OrderProfile;  // the price/size the exchange last confirmed
 	};
 
-	// The in-flight request table: request ids are monotonic, so a direct-mapped entry per id
-	// gives one predictable slot to write at send and read at response — no scan, no per-order
-	// growth. It holds the last table-length requests of THIS router; a strategy would need
-	// that many unacknowledged messages on one instrument before an entry could be overwritten
-	// early, and even then a lookup miss only falls back to the confirmed revision.
-	struct RequestTag
+	// The revision a response answers: the echoed request id taken from the session's request
+	// ring (the gateway owns the id space, so it owns the ring — shared by every router on
+	// the session). Taking consumes the entry, so resolve once per response; misses (already
+	// taken, unsolicited, or zero) fall back to the last confirmed revision.
+	int32_t SeqOfRequest(const Record* record, uint64_t requestId)
 	{
-		uint64_t RequestId = 0;
-		int32_t Seq = 0;
-	};
-	static constexpr uint32_t RequestTableLength = 1024;
-	std::vector<RequestTag> _requestTable = std::vector<RequestTag>(RequestTableLength);
-
-	// Remember that revision `seq` went out under `requestId`.
-	void PushRequest(uint64_t requestId, int32_t seq)
-	{
-		_requestTable[requestId & (RequestTableLength - 1)] = RequestTag{requestId, seq};
+		return _gateway->TagOfOrderRequest(requestId, record != nullptr ? record->Seq : 0);
 	}
 
-	// The revision a response answers: the echoed request id's table entry when it still
-	// holds that exact id; unknown echoes (overwritten, unsolicited, or zero) fall back to
-	// the record's last confirmed revision.
-	int32_t SeqOfRequest(const Record* record, uint64_t requestId) const
-	{
-		const RequestTag& tag = _requestTable[requestId & (RequestTableLength - 1)];
-		if (requestId != 0 && tag.RequestId == requestId)
-			return tag.Seq;
-		return record != nullptr ? record->Seq : 0;
-	}
 	std::vector<Record> _orders;   // indexed by the global order index packed into the id
 
 public:
@@ -229,12 +209,11 @@ private:
 		const uint32_t quantity = static_cast<uint32_t>(std::abs(target.OrderProfile.Quantity));
 		const int64_t priceMantissa = static_cast<int64_t>(target.OrderProfile.Ticks) * _globexTickMantissa;
 
-		const uint64_t requestId = _gateway->NextOrderRequestId();
+		const uint64_t requestId = _gateway->NextOrderRequestId(target.OrderHeader.Seq);
 		NewOrderSingle order = NewLimitOrder(_securityId, side, quantity, priceMantissa,
 			std::string(), _senderId, 0, requestId, _location);
 		FormatClientOrderId(clientOrderId, order.ClOrdID);
 		*record = Record{clientOrderId, 0, target.OrderHeader.Seq, target.OrderProfile};
-		PushRequest(requestId, target.OrderHeader.Seq);
 		if (OnOrderSent)
 			OnOrderSent(clientOrderId, target.OrderProfile.Ticks, static_cast<int32_t>(quantity), side == SideReq::Buy);
 		if (!_gateway->SendNewOrderSingle(order))
@@ -260,11 +239,10 @@ private:
 		}
 
 		const SideReq side = record->OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
-		const uint64_t requestId = _gateway->NextOrderRequestId();
+		const uint64_t requestId = _gateway->NextOrderRequestId(target.OrderHeader.Seq);
 		OrderCancelRequest cancel = NewCancel(_securityId, side, record->ExchangeOrderId,
 			std::string(), _senderId, requestId, _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, cancel.ClOrdID);
-		PushRequest(requestId, target.OrderHeader.Seq);
 		if (!_gateway->SendOrderCancel(cancel))
 			PublishModifyReject(target.OrderHeader.ClientOrderId, record,
 				Execution::OrderTargetAction::Cancel, "session down: cancel not sent", target.OrderHeader.Seq);
@@ -293,11 +271,10 @@ private:
 		const uint32_t quantity = static_cast<uint32_t>(std::abs(target.OrderProfile.Quantity));
 		const int64_t priceMantissa = static_cast<int64_t>(target.OrderProfile.Ticks) * _globexTickMantissa;
 
-		const uint64_t requestId = _gateway->NextOrderRequestId();
+		const uint64_t requestId = _gateway->NextOrderRequestId(target.OrderHeader.Seq);
 		OrderCancelReplaceRequest replace = NewReplace(_securityId, side, record->ExchangeOrderId,
 			quantity, priceMantissa, _senderId, requestId, _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, replace.ClOrdID);
-		PushRequest(requestId, target.OrderHeader.Seq);
 		if (OnOrderSent)
 			OnOrderSent(target.OrderHeader.ClientOrderId, target.OrderProfile.Ticks,
 				static_cast<int32_t>(quantity), side == SideReq::Buy);
@@ -315,10 +292,13 @@ private:
 		if (!TryParseClientOrderId(report.ClOrdID, clientOrderId))
 			return;
 		Record* record = Find(clientOrderId);
+		// One lookup: taking the echo consumes its ring entry, so the revision is resolved
+		// once and used for both the confirmed state and the published one.
+		const int32_t seq = SeqOfRequest(record, report.OrderRequestID);
 		if (record != nullptr)
 		{
 			record->ExchangeOrderId = report.OrderID;
-			record->Seq = SeqOfRequest(record, report.OrderRequestID);   // the revision now confirmed
+			record->Seq = seq;   // the revision now confirmed
 		}
 		if (OnOrderLive)
 			OnOrderLive(clientOrderId, report.OrderID);
@@ -326,7 +306,7 @@ private:
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;   // the server fills in client/strategy ids
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = SeqOfRequest(record, report.OrderRequestID);
+		state.OrderHeader.Seq = seq;
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Active;
 		state.OrderProfile = record != nullptr ? record->OrderProfile : ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
@@ -403,10 +383,12 @@ private:
 		Record* record = Find(clientOrderId);
 
 		const Execution::OrderProfile confirmed = ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
+		// One lookup, as in the acceptance: the take consumes the ring entry.
+		const int32_t seq = SeqOfRequest(record, report.OrderRequestID);
 		if (record != nullptr)
 		{
 			record->OrderProfile = confirmed;
-			record->Seq = SeqOfRequest(record, report.OrderRequestID);   // the revision now confirmed
+			record->Seq = seq;   // the revision now confirmed
 		}
 		if (OnOrderLive)
 			OnOrderLive(clientOrderId, report.OrderID);
@@ -414,7 +396,7 @@ private:
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = SeqOfRequest(record, report.OrderRequestID);
+		state.OrderHeader.Seq = seq;
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Active;
 		state.OrderProfile = confirmed;
