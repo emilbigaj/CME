@@ -95,7 +95,7 @@ inline size_t EncodeNegotiate(const ILink3Config& config, uint64_t uuid, uint64_
 	// Step 3: Fill the message body, copying the raw signature bytes into its signature field.
 	Negotiate negotiate{};
 	std::memcpy(negotiate.HMACSignature.Chars, signature.data(), signature.size());
-	negotiate.AccessKeyID = config.AccessID;
+	negotiate.AccessKeyID = config.AccessKeyID;
 	negotiate.UUID = uuid;
 	negotiate.RequestTimestamp = requestTimestamp;
 	negotiate.Session = session;
@@ -120,7 +120,7 @@ inline size_t EncodeEstablish(const ILink3Config& config, uint64_t uuid, uint64_
 	// Step 3: Fill the message body, including the trading-system identity and session fields.
 	Establish establish{};
 	std::memcpy(establish.HMACSignature.Chars, signature.data(), signature.size());
-	establish.AccessKeyID = config.AccessID;
+	establish.AccessKeyID = config.AccessKeyID;
 	establish.TradingSystemName = config.TradingSystem.Name;
 	establish.TradingSystemVersion = config.TradingSystem.Version;
 	establish.TradingSystemVendor = config.TradingSystem.Vendor;

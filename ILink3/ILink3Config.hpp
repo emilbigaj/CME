@@ -184,7 +184,7 @@ struct ILink3Config
 	ILink3::Environment Environment = ILink3::Environment::Cert;
 	Tools::StringN<5> GFID;          // Globex firm id, sent as the logon "Firm" field
 	Tools::StringN<3> SessionID;     // sent as the logon "Session" field
-	Tools::StringN<20> AccessID;     // sent as the logon "access key" field
+	Tools::StringN<20> AccessKeyID;  // sent as the logon AccessKeyID field
 	Secret SecretKey;                // decoded from url-safe base64 to get the signing key
 	uint16_t Port = 0;               // one port shared by every gateway in the environment
 	std::string CreationDate;
@@ -224,8 +224,8 @@ struct ILink3Config
 			throw std::invalid_argument("ILink3Config: GFID is required (up to 5 chars)");
 		if (SessionID.ToString().empty())
 			throw std::invalid_argument("ILink3Config: SessionID is required (3 chars)");
-		if (AccessID.ToString().empty())
-			throw std::invalid_argument("ILink3Config: AccessID is required (20 chars)");
+		if (AccessKeyID.ToString().empty())
+			throw std::invalid_argument("ILink3Config: AccessKeyID is required (20 chars)");
 		if (!SecretKey.IsSet())
 			throw std::invalid_argument("ILink3Config: SecretKey is required");
 
@@ -300,7 +300,7 @@ struct ILink3Config
 			"Environment", &T::Environment,
 			"GFID", &T::GFID,
 			"SessionID", &T::SessionID,
-			"AccessID", &T::AccessID,
+			"AccessKeyID", &T::AccessKeyID,
 			"SecretKey", &T::SecretKey,
 			"Port", &T::Port,
 			"CreationDate", &T::CreationDate,
