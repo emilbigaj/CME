@@ -499,6 +499,11 @@ private:
 		{
 			return _server.Context().GetOrderTarget(Execution::OrderIdAllocator::GetGlobalIndex(clientOrderId)).Read();
 		};
+		// The last acked state, for attributing fills — durable across router restarts.
+		router->ReadOrderState = [this](uint64_t clientOrderId)
+		{
+			return _server.Context().GetOrderState(Execution::OrderIdAllocator::GetGlobalIndex(clientOrderId)).Read();
+		};
 		// Step 3b: The order lifecycle feeds the queue tracker across the segment's ring: sent
 		// starts the pending log at the price, the acknowledgment reconciles it, partial fills
 		// shrink our size, and done frees the slot.
