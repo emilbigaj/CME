@@ -51,7 +51,6 @@ class BasicInstrumentRouter
 	std::string _location;                 // desk location stamped on each order (built once)
 
 	// ---- live order book (owned by the single driving thread) ----
-	uint64_t _nextOrderRequestId = 1;      // a fresh request id per outbound order message
 
 	// One slot per order index. ClientOrderId is the full packed id the slot currently belongs
 	// to (zero = empty); its generation bits make a report against a reused slot mismatch.
@@ -59,8 +58,11 @@ class BasicInstrumentRouter
 	{
 		uint64_t ClientOrderId = 0;
 		uint64_t ExchangeOrderId = 0;          // CME's order id, known once the order is accepted
-		int32_t Seq = 0;                       // the server revision this order is on
-		Execution::OrderProfile OrderProfile;  // the price/size the server asked for
+		// The last revision the exchange CONFIRMED (the create's until its acknowledgment).
+		// Never stamped at send time: revisions in flight are correlated by the request id
+		// each response echoes, so a report is always attributed to the revision it answers.
+		int32_t Seq = 0;
+		Execution::OrderProfile OrderProfile;  // the price/size the exchange last confirmed
 	};
 	std::vector<Record> _orders;   // indexed by the global order index packed into the id
 
@@ -157,8 +159,8 @@ public:
 			case ExecutionReportCancel::TemplateId:        HandleCancel(*message.As<ExecutionReportCancel>()); break;
 			case ExecutionReportModify::TemplateId:        HandleModify(*message.As<ExecutionReportModify>()); break;
 			case ExecutionReportTradeOutright::TemplateId: HandleFill(*message.As<ExecutionReportTradeOutright>()); break;
-			case OrderCancelReject::TemplateId:            HandleModifyReject(message.As<OrderCancelReject>()->ClOrdID, message.As<OrderCancelReject>()->Text, Execution::OrderTargetAction::Cancel); break;
-			case OrderCancelReplaceReject::TemplateId:     HandleModifyReject(message.As<OrderCancelReplaceReject>()->ClOrdID, message.As<OrderCancelReplaceReject>()->Text, Execution::OrderTargetAction::Amend); break;
+			case OrderCancelReject::TemplateId:            HandleModifyReject(message.As<OrderCancelReject>()->ClOrdID, message.As<OrderCancelReject>()->Text, message.As<OrderCancelReject>()->OrderRequestID, Execution::OrderTargetAction::Cancel); break;
+			case OrderCancelReplaceReject::TemplateId:     HandleModifyReject(message.As<OrderCancelReplaceReject>()->ClOrdID, message.As<OrderCancelReplaceReject>()->Text, message.As<OrderCancelReplaceReject>()->OrderRequestID, Execution::OrderTargetAction::Amend); break;
 			default: break;
 		}
 	}
@@ -196,7 +198,7 @@ private:
 		const int64_t priceMantissa = static_cast<int64_t>(target.OrderProfile.Ticks) * _globexTickMantissa;
 
 		NewOrderSingle order = NewLimitOrder(_securityId, side, quantity, priceMantissa,
-			std::string(), _senderId, 0, _nextOrderRequestId++, _location);
+			std::string(), _senderId, 0, static_cast<uint64_t>(target.OrderHeader.Seq), _location);
 		FormatClientOrderId(clientOrderId, order.ClOrdID);
 		*record = Record{clientOrderId, 0, target.OrderHeader.Seq, target.OrderProfile};
 		if (OnOrderSent)
@@ -225,12 +227,11 @@ private:
 
 		const SideReq side = record->OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
 		OrderCancelRequest cancel = NewCancel(_securityId, side, record->ExchangeOrderId,
-			std::string(), _senderId, _nextOrderRequestId++, _location);
+			std::string(), _senderId, static_cast<uint64_t>(target.OrderHeader.Seq), _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, cancel.ClOrdID);
-		record->Seq = target.OrderHeader.Seq;   // the cancel is this revision
 		if (!_gateway->SendOrderCancel(cancel))
 			PublishModifyReject(target.OrderHeader.ClientOrderId, record,
-				Execution::OrderTargetAction::Cancel, "session down: cancel not sent");
+				Execution::OrderTargetAction::Cancel, "session down: cancel not sent", target.OrderHeader.Seq);
 	}
 
 	// Move a working order to a new price/size, referencing it by the exchange id. The slot's
@@ -257,15 +258,14 @@ private:
 		const int64_t priceMantissa = static_cast<int64_t>(target.OrderProfile.Ticks) * _globexTickMantissa;
 
 		OrderCancelReplaceRequest replace = NewReplace(_securityId, side, record->ExchangeOrderId,
-			quantity, priceMantissa, _senderId, _nextOrderRequestId++, _location);
+			quantity, priceMantissa, _senderId, static_cast<uint64_t>(target.OrderHeader.Seq), _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, replace.ClOrdID);
-		record->Seq = target.OrderHeader.Seq;   // the replace is this revision
 		if (OnOrderSent)
 			OnOrderSent(target.OrderHeader.ClientOrderId, target.OrderProfile.Ticks,
 				static_cast<int32_t>(quantity), side == SideReq::Buy);
 		if (!_gateway->SendOrderCancelReplace(replace))
 			PublishModifyReject(target.OrderHeader.ClientOrderId, record,
-				Execution::OrderTargetAction::Amend, "session down: replace not sent");
+				Execution::OrderTargetAction::Amend, "session down: replace not sent", target.OrderHeader.Seq);
 	}
 
 	// ---- inbound ----
@@ -278,14 +278,17 @@ private:
 			return;
 		Record* record = Find(clientOrderId);
 		if (record != nullptr)
+		{
 			record->ExchangeOrderId = report.OrderID;
+			record->Seq = static_cast<int32_t>(report.OrderRequestID);   // the revision now confirmed
+		}
 		if (OnOrderLive)
 			OnOrderLive(clientOrderId, report.OrderID);
 
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;   // the server fills in client/strategy ids
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
+		state.OrderHeader.Seq = static_cast<int32_t>(report.OrderRequestID);
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Active;
 		state.OrderProfile = record != nullptr ? record->OrderProfile : ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
@@ -317,7 +320,7 @@ private:
 		Execution::OrderRejected rejected{};
 		rejected.OrderHeader.ClientOrderId = clientOrderId;
 		rejected.OrderHeader.InstrumentId = _instrumentId;
-		rejected.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
+		rejected.OrderHeader.Seq = static_cast<int32_t>(report.OrderRequestID);
 		rejected.OrderTargetAction = Execution::OrderTargetAction::Create;
 		rejected.OrderRejectedSource = Execution::OrderRejectedSource::Exchange;
 		rejected.OrderProfile = record != nullptr ? record->OrderProfile : ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
@@ -340,7 +343,7 @@ private:
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
+		state.OrderHeader.Seq = static_cast<int32_t>(report.OrderRequestID);
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Done;
 		state.OrderProfile = record != nullptr ? record->OrderProfile : Execution::OrderProfile{};
@@ -363,14 +366,17 @@ private:
 
 		const Execution::OrderProfile confirmed = ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
 		if (record != nullptr)
+		{
 			record->OrderProfile = confirmed;
+			record->Seq = static_cast<int32_t>(report.OrderRequestID);   // the revision now confirmed
+		}
 		if (OnOrderLive)
 			OnOrderLive(clientOrderId, report.OrderID);
 
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
+		state.OrderHeader.Seq = static_cast<int32_t>(report.OrderRequestID);
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Active;
 		state.OrderProfile = confirmed;
@@ -389,6 +395,8 @@ private:
 		Record* record = Find(clientOrderId);
 
 		// Step 1: The fill itself: the traded price/size, maker or taker by the aggressor flag.
+		// A fill is an event on the WORKING order, not a response to a request, so it belongs
+		// to the last confirmed revision — even when a newer revision is in flight.
 		Execution::Fill fill{};
 		fill.OrderHeader.ClientOrderId = clientOrderId;
 		fill.OrderHeader.InstrumentId = _instrumentId;
@@ -420,25 +428,28 @@ private:
 			OnOrderState(state);
 	}
 
-	// A cancel or replace was refused by the exchange: the order stays working as it was.
+	// A cancel or replace was refused by the exchange: the order stays working as it was. The
+	// echoed request id names the revision that was refused.
 	void HandleModifyReject(const Tools::StringN<20>& clOrdId, const Tools::StringN<256>& text,
-	                        Execution::OrderTargetAction action)
+	                        uint64_t orderRequestId, Execution::OrderTargetAction action)
 	{
 		uint64_t clientOrderId = 0;
 		if (!TryParseClientOrderId(clOrdId, clientOrderId))
 			return;
-		PublishModifyReject(clientOrderId, Find(clientOrderId), action, text.ToString());
+		PublishModifyReject(clientOrderId, Find(clientOrderId), action, text.ToString(),
+			static_cast<int32_t>(orderRequestId));
 	}
 
 	// A refused cancel or replace, from the exchange or from a dead session alike: the order
-	// stays working as it was, so keep the slot and publish the rejection with the reason.
+	// stays working as it was, so keep the slot and publish the rejection with the reason,
+	// attributed to the revision that was refused.
 	void PublishModifyReject(uint64_t clientOrderId, Record* record,
-	                         Execution::OrderTargetAction action, const std::string& text)
+	                         Execution::OrderTargetAction action, const std::string& text, int32_t seq)
 	{
 		Execution::OrderRejected rejected{};
 		rejected.OrderHeader.ClientOrderId = clientOrderId;
 		rejected.OrderHeader.InstrumentId = _instrumentId;
-		rejected.OrderHeader.Seq = record != nullptr ? record->Seq : 0;
+		rejected.OrderHeader.Seq = seq;
 		rejected.OrderTargetAction = action;
 		rejected.OrderRejectedSource = Execution::OrderRejectedSource::Exchange;
 		rejected.OrderProfile = record != nullptr ? record->OrderProfile : Execution::OrderProfile{};
