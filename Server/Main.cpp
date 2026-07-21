@@ -11,6 +11,7 @@
 
 #include "CmeServer.hpp"
 #include "ZfConnection.hpp"
+#include "EfViReceiver.hpp"
 #include "AlertManager.hpp"
 
 #include <atomic>
@@ -97,10 +98,19 @@ int main(int argc, char** argv)
 			loggingStub->Listen();
 		}
 
-		// Step 3: Run the transport the settings chose.
-		const int result = config.Transport == "TcpDirect"
-			? Run<Server::BasicCmeServer<ILink3::ZfConnection>>(config, marketSegments, ilink3Config, secdef, channels)
-			: Run<Server::CmeServer>(config, marketSegments, ilink3Config, secdef, channels);
+		// Step 3: Run the transports the settings chose — order entry and market data each
+		// pick kernel or kernel bypass, and the stack beneath is stamped out statically.
+		const bool bypassOrders = config.Transport == "TcpDirect";
+		const bool bypassMarketData = config.MarketDataTransport == "EfVi";
+		int result;
+		if (bypassOrders && bypassMarketData)
+			result = Run<Server::BasicCmeServer<ILink3::ZfConnection, Mdp3::EfViReceiver>>(config, marketSegments, ilink3Config, secdef, channels);
+		else if (bypassOrders)
+			result = Run<Server::BasicCmeServer<ILink3::ZfConnection>>(config, marketSegments, ilink3Config, secdef, channels);
+		else if (bypassMarketData)
+			result = Run<Server::BasicCmeServer<ILink3::TcpConnection, Mdp3::EfViReceiver>>(config, marketSegments, ilink3Config, secdef, channels);
+		else
+			result = Run<Server::CmeServer>(config, marketSegments, ilink3Config, secdef, channels);
 		if (loggingStub)
 			loggingStub->Dispose();
 		std::cout << "CmeServer stopped." << std::endl;

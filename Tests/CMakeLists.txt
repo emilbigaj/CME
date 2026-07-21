@@ -58,3 +58,13 @@ target_link_libraries(ZfProbe PRIVATE onload_zf)
 # Live: kernel-bypass TCP connect to a real address — reports established / refused / timeout.
 add_executable(ZfTcp "ZfConnectionTests.cpp")
 target_link_libraries(ZfTcp PRIVATE ILink3Lib onload_zf)
+
+# Live: kernel-bypass market-data receive — join an incremental feed through the Solarflare
+# adapter and report arrivals and sequence continuity.
+add_executable(EfViProbe "EfViProbeTests.cpp")
+target_link_libraries(EfViProbe PRIVATE Mdp3Lib ciul1)
+
+# Live: redundant-feed arbitration — A and B each on their own Solarflare port, both by
+# kernel bypass, the merged stream checked for continuity.
+add_executable(Mdp3Arb "Mdp3ArbTests.cpp")
+target_link_libraries(Mdp3Arb PRIVATE Mdp3Lib ciul1)

@@ -31,6 +31,7 @@
 #include "SecDefFile.hpp"
 #include "BookBuilder.hpp"
 #include "ChannelConfig.hpp"
+#include "FeedArbitrator.hpp"
 #include "UdpReceiver.hpp"
 #include "Server.hpp"             // Provider::Server (the shared-memory hub)
 #include "OrderIdAllocator.hpp"
@@ -50,7 +51,7 @@
 namespace Server
 {
 
-template <typename Connection>
+template <typename Connection, typename MdReceiver = Mdp3::UdpReceiver>
 class BasicCmeServer
 {
 	// The gateway and router stamped for this server's transport.
@@ -64,8 +65,8 @@ class BasicCmeServer
 	{
 		MarketSegment Config;
 		std::unique_ptr<GatewayType> Gateway;
-		Mdp3::UdpReceiver Receiver;
-		Mdp3::UdpReceiver SnapshotReceiver;   // read only while any instrument awaits a snapshot
+		Mdp3::FeedArbitrator<MdReceiver> Receiver;   // the arbitrated incremental pair (B when configured)
+		MdReceiver SnapshotReceiver;                 // read only while any instrument awaits a snapshot
 		Mdp3::BookBuilder Books;
 
 		struct Subscription
@@ -267,7 +268,13 @@ public:
 			const Mdp3::Connection* feed = channel->Find("I", 'A');
 			if (feed == nullptr)
 				throw std::runtime_error("CmeServer: channel " + std::to_string(segment->Config.Channel) + " has no incremental feed");
-			segment->Receiver.Join(feed->Ip, feed->Port, _config.MarketDataInterfaceIp);
+			segment->Receiver.A.Join(feed->Ip, feed->Port, _config.MarketDataInterfaceIp);
+			const Mdp3::Connection* feedB = channel->Find("I", 'B');
+			if (!_config.MarketDataInterfaceIpB.empty() && feedB != nullptr)
+			{
+				segment->Receiver.B.Join(feedB->Ip, feedB->Port, _config.MarketDataInterfaceIpB);
+				segment->Receiver.HasB = true;
+			}
 			const Mdp3::Connection* snapshotFeed = channel->Find("S", 'A');
 			if (snapshotFeed == nullptr)
 				throw std::runtime_error("CmeServer: channel " + std::to_string(segment->Config.Channel) + " has no snapshot feed");

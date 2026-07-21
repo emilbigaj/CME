@@ -24,11 +24,16 @@ struct CmeServerConfig
 	std::string SecDefPath;               // the security-definition file (the instrument universe)
 	std::string ChannelConfigPath;        // the market-data channel configuration file
 	std::string MarketSegmentsPath;       // the machine's market-segment layout (shared by environments)
-	std::string MarketDataInterfaceIp;    // the interface the multicast feeds are joined on
+	std::string MarketDataInterfaceIp;    // the interface the A feeds are joined on
+	// The interface for the redundant B feeds (their own network path); empty = A only.
+	std::string MarketDataInterfaceIpB;
 	// Which order-entry transport to stamp the server out on: "Kernel" (ordinary sockets;
 	// bring-up, certification) or "TcpDirect" (kernel bypass on a Solarflare port, named by
 	// the ZF_ATTR environment variable; production).
 	std::string Transport = "Kernel";
+	// Which market-data receive path: "Kernel" (ordinary multicast sockets) or "EfVi"
+	// (kernel bypass on the Solarflare ports; production).
+	std::string MarketDataTransport = "Kernel";
 	bool StubLoggingServer = false;       // testing only: accept our own logging connections
 
 	// Check every required field is present; throws with the exact reason if not.
@@ -38,6 +43,8 @@ struct CmeServerConfig
 			throw std::invalid_argument("CmeServerConfig: ServerName is required");
 		if (Transport != "Kernel" && Transport != "TcpDirect")
 			throw std::invalid_argument("CmeServerConfig: Transport must be Kernel or TcpDirect");
+		if (MarketDataTransport != "Kernel" && MarketDataTransport != "EfVi")
+			throw std::invalid_argument("CmeServerConfig: MarketDataTransport must be Kernel or EfVi");
 		if (ILink3ConfigPath.empty() || SecDefPath.empty() || ChannelConfigPath.empty() || MarketSegmentsPath.empty())
 			throw std::invalid_argument("CmeServerConfig: ILink3ConfigPath, SecDefPath, ChannelConfigPath, and MarketSegmentsPath are required");
 		if (MarketDataInterfaceIp.empty())
@@ -75,7 +82,9 @@ struct CmeServerConfig
 			"ChannelConfigPath", &T::ChannelConfigPath,
 			"MarketSegmentsPath", &T::MarketSegmentsPath,
 			"MarketDataInterfaceIp", &T::MarketDataInterfaceIp,
+			"MarketDataInterfaceIpB", &T::MarketDataInterfaceIpB,
 			"Transport", &T::Transport,
+			"MarketDataTransport", &T::MarketDataTransport,
 			"StubLoggingServer", &T::StubLoggingServer);
 	};
 };
