@@ -66,6 +66,7 @@ class BasicMarketSegmentGateway
 	uint32_t _recoverEnd = 0;           // one past the last missed number the recovery must cover
 	uint32_t _batchEnd = 0;             // one past the outstanding batch's last number; 0 = none out
 	uint32_t _reconnectAttempts = 0;    // alternates the primary/backup address across attempts
+	uint64_t _nextOrderRequestId = 1;   // session-unique order-request ids for every router on this session
 
 	// CME serves at most this many messages per retransmit request, one request in flight at
 	// a time — a bigger gap recovers as consecutive batches.
@@ -168,6 +169,7 @@ public:
 				_sessionStore.BeginWeek(_uuid);
 		}
 		_partyDetailsListId = 0;
+		_nextOrderRequestId = MakeUuid();   // clock-seeded: unique across restarts of the same session
 		_replayBelowSeq = 0;
 		_recoverNextFrom = 0;
 		_recoverEnd = 0;
@@ -246,6 +248,11 @@ public:
 
 	// Non-zero once a registered party id is in effect; 0 means on-demand mode.
 	uint64_t PartyDetailsListId() const { return _partyDetailsListId; }
+
+	// The next order-request id: unique across every order and router on this session (2422
+	// is echoed on every response; the wire requires it unique, so it cannot be the per-order
+	// revision — routers correlate the echo back to a revision themselves).
+	uint64_t NextOrderRequestId() { return _nextOrderRequestId++; }
 
 	// Adopt a party id registered elsewhere (on the Order Entry Service Gateway), so every
 	// order this session sends references it instead of dragging its own definition.

@@ -59,11 +59,44 @@ class BasicInstrumentRouter
 		uint64_t ClientOrderId = 0;
 		uint64_t ExchangeOrderId = 0;          // CME's order id, known once the order is accepted
 		// The last revision the exchange CONFIRMED (the create's until its acknowledgment).
-		// Never stamped at send time: revisions in flight are correlated by the request id
-		// each response echoes, so a report is always attributed to the revision it answers.
+		// Never stamped at send time: each request goes out under a session-unique id the
+		// response echoes, and the in-flight ring below maps that echo back to the revision
+		// it answers — so a report is always attributed correctly, however many revisions
+		// are in flight.
 		int32_t Seq = 0;
 		Execution::OrderProfile OrderProfile;  // the price/size the exchange last confirmed
+
+		// The revisions in flight: newest overwrites oldest, far deeper than any sane
+		// modify pipeline. A missed lookup falls back to the confirmed revision.
+		static constexpr uint32_t InFlightDepth = 4;
+		struct Request
+		{
+			uint64_t RequestId = 0;
+			int32_t Seq = 0;
+		};
+		Request InFlight[InFlightDepth];
+		uint32_t InFlightNext = 0;
+
+		// Remember that revision `seq` went out under `requestId`.
+		void PushRequest(uint64_t requestId, int32_t seq)
+		{
+			InFlight[InFlightNext % InFlightDepth] = Request{requestId, seq};
+			++InFlightNext;
+		}
 	};
+
+	// The revision a response answers: the echoed request id looked up in the record's
+	// in-flight ring; unknown echoes (an overwritten entry, an unsolicited event, no record)
+	// fall back to the last confirmed revision.
+	static int32_t SeqOfRequest(const Record* record, uint64_t requestId)
+	{
+		if (record == nullptr)
+			return 0;
+		for (const typename Record::Request& request : record->InFlight)
+			if (request.RequestId == requestId && requestId != 0)
+				return request.Seq;
+		return record->Seq;
+	}
 	std::vector<Record> _orders;   // indexed by the global order index packed into the id
 
 public:
@@ -197,10 +230,15 @@ private:
 		const uint32_t quantity = static_cast<uint32_t>(std::abs(target.OrderProfile.Quantity));
 		const int64_t priceMantissa = static_cast<int64_t>(target.OrderProfile.Ticks) * _globexTickMantissa;
 
+		const uint64_t requestId = _gateway->NextOrderRequestId();
 		NewOrderSingle order = NewLimitOrder(_securityId, side, quantity, priceMantissa,
-			std::string(), _senderId, 0, static_cast<uint64_t>(target.OrderHeader.Seq), _location);
+			std::string(), _senderId, 0, requestId, _location);
 		FormatClientOrderId(clientOrderId, order.ClOrdID);
-		*record = Record{clientOrderId, 0, target.OrderHeader.Seq, target.OrderProfile};
+		*record = Record{};
+		record->ClientOrderId = clientOrderId;
+		record->Seq = target.OrderHeader.Seq;
+		record->OrderProfile = target.OrderProfile;
+		record->PushRequest(requestId, target.OrderHeader.Seq);
 		if (OnOrderSent)
 			OnOrderSent(clientOrderId, target.OrderProfile.Ticks, static_cast<int32_t>(quantity), side == SideReq::Buy);
 		if (!_gateway->SendNewOrderSingle(order))
@@ -226,9 +264,11 @@ private:
 		}
 
 		const SideReq side = record->OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
+		const uint64_t requestId = _gateway->NextOrderRequestId();
 		OrderCancelRequest cancel = NewCancel(_securityId, side, record->ExchangeOrderId,
-			std::string(), _senderId, static_cast<uint64_t>(target.OrderHeader.Seq), _location);
+			std::string(), _senderId, requestId, _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, cancel.ClOrdID);
+		record->PushRequest(requestId, target.OrderHeader.Seq);
 		if (!_gateway->SendOrderCancel(cancel))
 			PublishModifyReject(target.OrderHeader.ClientOrderId, record,
 				Execution::OrderTargetAction::Cancel, "session down: cancel not sent", target.OrderHeader.Seq);
@@ -257,9 +297,11 @@ private:
 		const uint32_t quantity = static_cast<uint32_t>(std::abs(target.OrderProfile.Quantity));
 		const int64_t priceMantissa = static_cast<int64_t>(target.OrderProfile.Ticks) * _globexTickMantissa;
 
+		const uint64_t requestId = _gateway->NextOrderRequestId();
 		OrderCancelReplaceRequest replace = NewReplace(_securityId, side, record->ExchangeOrderId,
-			quantity, priceMantissa, _senderId, static_cast<uint64_t>(target.OrderHeader.Seq), _location);
+			quantity, priceMantissa, _senderId, requestId, _location);
 		FormatClientOrderId(target.OrderHeader.ClientOrderId, replace.ClOrdID);
+		record->PushRequest(requestId, target.OrderHeader.Seq);
 		if (OnOrderSent)
 			OnOrderSent(target.OrderHeader.ClientOrderId, target.OrderProfile.Ticks,
 				static_cast<int32_t>(quantity), side == SideReq::Buy);
@@ -280,7 +322,7 @@ private:
 		if (record != nullptr)
 		{
 			record->ExchangeOrderId = report.OrderID;
-			record->Seq = static_cast<int32_t>(report.OrderRequestID);   // the revision now confirmed
+			record->Seq = SeqOfRequest(record, report.OrderRequestID);   // the revision now confirmed
 		}
 		if (OnOrderLive)
 			OnOrderLive(clientOrderId, report.OrderID);
@@ -288,7 +330,7 @@ private:
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;   // the server fills in client/strategy ids
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = static_cast<int32_t>(report.OrderRequestID);
+		state.OrderHeader.Seq = SeqOfRequest(record, report.OrderRequestID);
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Active;
 		state.OrderProfile = record != nullptr ? record->OrderProfile : ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
@@ -320,7 +362,7 @@ private:
 		Execution::OrderRejected rejected{};
 		rejected.OrderHeader.ClientOrderId = clientOrderId;
 		rejected.OrderHeader.InstrumentId = _instrumentId;
-		rejected.OrderHeader.Seq = static_cast<int32_t>(report.OrderRequestID);
+		rejected.OrderHeader.Seq = SeqOfRequest(record, report.OrderRequestID);
 		rejected.OrderTargetAction = Execution::OrderTargetAction::Create;
 		rejected.OrderRejectedSource = Execution::OrderRejectedSource::Exchange;
 		rejected.OrderProfile = record != nullptr ? record->OrderProfile : ProfileFrom(report.Price.Mantissa, report.OrderQty, report.Side);
@@ -343,7 +385,7 @@ private:
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = static_cast<int32_t>(report.OrderRequestID);
+		state.OrderHeader.Seq = SeqOfRequest(record, report.OrderRequestID);
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Done;
 		state.OrderProfile = record != nullptr ? record->OrderProfile : Execution::OrderProfile{};
@@ -368,7 +410,7 @@ private:
 		if (record != nullptr)
 		{
 			record->OrderProfile = confirmed;
-			record->Seq = static_cast<int32_t>(report.OrderRequestID);   // the revision now confirmed
+			record->Seq = SeqOfRequest(record, report.OrderRequestID);   // the revision now confirmed
 		}
 		if (OnOrderLive)
 			OnOrderLive(clientOrderId, report.OrderID);
@@ -376,7 +418,7 @@ private:
 		Execution::OrderState state{};
 		state.OrderHeader.ClientOrderId = clientOrderId;
 		state.OrderHeader.InstrumentId = _instrumentId;
-		state.OrderHeader.Seq = static_cast<int32_t>(report.OrderRequestID);
+		state.OrderHeader.Seq = SeqOfRequest(record, report.OrderRequestID);
 		state.OrderHeader.ExchangeTimestamp = Tools::Timestamp(static_cast<int64_t>(report.TransactTime));
 		state.OrderStateStatus = Execution::OrderStateStatus::Active;
 		state.OrderProfile = confirmed;
@@ -436,8 +478,9 @@ private:
 		uint64_t clientOrderId = 0;
 		if (!TryParseClientOrderId(clOrdId, clientOrderId))
 			return;
-		PublishModifyReject(clientOrderId, Find(clientOrderId), action, text.ToString(),
-			static_cast<int32_t>(orderRequestId));
+		Record* record = Find(clientOrderId);
+		PublishModifyReject(clientOrderId, record, action, text.ToString(),
+			SeqOfRequest(record, orderRequestId));
 	}
 
 	// A refused cancel or replace, from the exchange or from a dead session alike: the order
