@@ -492,6 +492,13 @@ private:
 			Execution::OrderRejected copy = rejected;
 			_server.OnOrderRejected(copy, text);
 		};
+		// The strategy's latest intent, for the create-still-in-flight case: a modify arriving
+		// before the create's acknowledgment is rejected as create-is-active, and the
+		// acknowledgment replays the newest revision from here.
+		router->ReadOrderTarget = [this](uint64_t clientOrderId)
+		{
+			return _server.Context().GetOrderTarget(Execution::OrderIdAllocator::GetGlobalIndex(clientOrderId)).Read();
+		};
 		// Step 3b: The order lifecycle feeds the queue tracker across the segment's ring: sent
 		// starts the pending log at the price, the acknowledgment reconciles it, partial fills
 		// shrink our size, and done frees the slot.

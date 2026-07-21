@@ -71,6 +71,11 @@ public:
 	std::function<void(const Execution::OrderRejected&, const std::string&)> OnOrderRejected;
 	std::function<void(const Execution::Fill&)> OnFill;
 
+	// Wired by the owner: the strategy's latest order target for a client order id, straight
+	// from the shared target array. Read when a create's acknowledgment lands, to send any
+	// newer revision the strategy asked for while the create was still in flight.
+	std::function<Execution::OrderTarget(uint64_t clientOrderId)> ReadOrderTarget;
+
 	// The order-lifecycle moments the queue tracking cares about: an order (or new price) going
 	// to the wire, the exchange naming it, our remaining size changing, and it being done.
 	std::function<void(uint64_t clientOrderId, int32_t ticks, int32_t quantity, bool isBid)> OnOrderSent;
@@ -204,8 +209,19 @@ private:
 	void SendCancel(const Execution::OrderTarget& target)
 	{
 		Record* record = Find(target.OrderHeader.ClientOrderId);
-		if (record == nullptr || record->ExchangeOrderId == 0)
-			return;   // nothing working to cancel
+		if (record == nullptr)
+		{
+			RejectUnsendable(target, Execution::OrderRejectedReason::OrderNotFound, "cancel: no such order");
+			return;
+		}
+		if (record->ExchangeOrderId == 0)
+		{
+			// The create is still in flight — the wire cancel needs the exchange's own order
+			// id from its acknowledgment. Reject now, so the strategy is never left believing
+			// a dropped intent is working; the acknowledgment replays the newest revision.
+			RejectUnsendable(target, Execution::OrderRejectedReason::CreateIsActive, "cancel: create not yet acknowledged");
+			return;
+		}
 
 		const SideReq side = record->OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
 		OrderCancelRequest cancel = NewCancel(_securityId, side, record->ExchangeOrderId,
@@ -223,8 +239,18 @@ private:
 	void SendReplace(const Execution::OrderTarget& target)
 	{
 		Record* record = Find(target.OrderHeader.ClientOrderId);
-		if (record == nullptr || record->ExchangeOrderId == 0)
-			return;   // nothing working to replace
+		if (record == nullptr)
+		{
+			RejectUnsendable(target, Execution::OrderRejectedReason::OrderNotFound, "replace: no such order");
+			return;
+		}
+		if (record->ExchangeOrderId == 0)
+		{
+			// Same story as the cancel: unsendable until the create's acknowledgment names
+			// the order, and the acknowledgment replays the newest revision.
+			RejectUnsendable(target, Execution::OrderRejectedReason::CreateIsActive, "replace: create not yet acknowledged");
+			return;
+		}
 
 		const SideReq side = record->OrderProfile.Sign() >= 0 ? SideReq::Buy : SideReq::Sell;
 		const uint32_t quantity = static_cast<uint32_t>(std::abs(target.OrderProfile.Quantity));
@@ -266,6 +292,18 @@ private:
 		state.QuantityFilled = 0;
 		if (OnOrderState)
 			OnOrderState(state);
+
+		// The order is now sendable. If the strategy asked for a newer revision while the
+		// create was in flight (rejected then as create-is-active), send it now — its intent
+		// was deferred, never lost.
+		if (record != nullptr && ReadOrderTarget)
+		{
+			const Execution::OrderTarget target = ReadOrderTarget(clientOrderId);
+			if (target.OrderHeader.ClientOrderId == clientOrderId
+			 && target.OrderHeader.Seq > record->Seq
+			 && target.OrderTargetAction != Execution::OrderTargetAction::Create)
+				OnOrderTarget(target);
+		}
 	}
 
 	// An order was rejected by the exchange: publish the rejection with the reason text.
@@ -414,6 +452,22 @@ private:
 			if (OnOrderLive)
 				OnOrderLive(clientOrderId, record->ExchangeOrderId);
 		}
+		if (OnOrderRejected)
+			OnOrderRejected(rejected, text);
+	}
+
+	// A cancel or replace the router cannot send — the order is unknown, or its create is
+	// still unacknowledged: tell the strategy at once, with the reason. Silence here would
+	// strand the strategy's intent; the order (when there is one) stays untouched.
+	void RejectUnsendable(const Execution::OrderTarget& target, Execution::OrderRejectedReason reason, const std::string& text)
+	{
+		Execution::OrderRejected rejected{};
+		rejected.OrderHeader = target.OrderHeader;
+		rejected.OrderHeader.InstrumentId = _instrumentId;
+		rejected.OrderTargetAction = target.OrderTargetAction;
+		rejected.OrderRejectedSource = Execution::OrderRejectedSource::Server;
+		rejected.OrderProfile = target.OrderProfile;
+		rejected.OrderRejectedReasons.Set(static_cast<int32_t>(reason));
 		if (OnOrderRejected)
 			OnOrderRejected(rejected, text);
 	}
