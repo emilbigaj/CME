@@ -49,3 +49,8 @@ target_link_libraries(Mdp3Dump PRIVATE Mdp3Lib)
 # Live: one instrument's book — feed -> walker -> book builder -> market-by-price, top printed.
 add_executable(Mdp3Book "Mdp3BookTests.cpp")
 target_link_libraries(Mdp3Book PRIVATE Mdp3Lib SecDefLib)
+
+# Machine: kernel-bypass runtime check — initialize TCPDirect and allocate a stack on a
+# Solarflare interface (exercises the driver and license; no traffic).
+add_executable(ZfProbe "ZfProbeTests.cpp")
+target_link_libraries(ZfProbe PRIVATE onload_zf)
